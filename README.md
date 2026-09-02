@@ -1,0 +1,232 @@
+# VeloxQuant Go
+
+**Memory intelligence and optimization for local AI, in Go.**
+
+VeloxQuant Go is not a wrapper around MLX. It's a Go-native toolkit for
+building local AI infrastructure: hardware detection, model and KV-cache
+memory estimation, VeloxQuant compression recommendations, and a client for
+talking to a local VeloxQuant runtime — all without needing to understand
+MLX or manually calculate memory requirements.
+
+```text
+Go Application
+      │
+      ▼
+VeloxQuant Go SDK
+      │
+      ├── Hardware Intelligence
+      ├── Memory Estimation
+      ├── KV Cache Optimization
+      ├── AutoPilot
+      └── Runtime Client
+               │
+               ▼
+      VeloxQuant Runtime / MLX
+               │
+               ▼
+        Apple Silicon
+```
+
+Part of the VeloxQuant ecosystem: [VeloxQuant-MLX](https://github.com/rajveer43) (Python optimization engine), VeloxQuant Studio (macOS app), VeloxQuant VS Code, and the VeloxQuant npm SDK.
+
+## Installation
+
+```bash
+go get github.com/rajveer43/veloxquant-go
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	veloxquant "github.com/rajveer43/veloxquant-go"
+)
+
+func main() {
+	client, err := veloxquant.NewClient()
+	if err != nil {
+		panic(err)
+	}
+
+	response, err := client.Chat(context.Background(), veloxquant.ChatRequest{
+		Model: "mlx-community/Qwen3-8B-4bit",
+		Messages: []veloxquant.Message{
+			{Role: "user", Content: "Hello!"},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(response.Text)
+}
+```
+
+## Streaming
+
+```go
+stream, err := client.ChatStream(ctx, veloxquant.ChatRequest{
+	Model: "mlx-community/Qwen3-8B-4bit",
+	Messages: []veloxquant.Message{
+		{Role: "user", Content: "Write a Go HTTP server."},
+	},
+})
+if err != nil {
+	panic(err)
+}
+defer stream.Close()
+
+for stream.Next() {
+	fmt.Print(stream.Chunk().Text)
+}
+if err := stream.Err(); err != nil {
+	panic(err)
+}
+```
+
+## Memory Estimation
+
+Estimate model and KV-cache memory before you load anything:
+
+```go
+estimate, err := client.Memory.Estimate(ctx, veloxquant.MemoryRequest{
+	Model: veloxquant.ModelArchitecture{
+		NumLayers:      36,
+		NumKVHeads:     8,
+		HeadDim:        128,
+		HiddenSize:     4096,
+		ParameterCount: 8_000_000_000,
+	},
+	ContextLength: 32768,
+	Precision:     veloxquant.Int4,
+})
+
+fmt.Println(veloxquant.FormatBytes(estimate.TotalMemoryBytes))
+fmt.Println(veloxquant.FormatBytes(estimate.OptimizedTotalBytes))
+fmt.Printf("%.1f%% saved\n", estimate.SavedPercent)
+```
+
+KV-cache memory is computed as:
+
+```text
+KV Cache Memory = Layers × Tokens × KV Heads × Head Dimension × 2 × Bytes Per Element
+```
+
+Supported precisions: `FP16`, `FP8`, `Int8`, `Int4`.
+
+## Optimization Profiles
+
+```go
+rec, err := client.Optimize.Recommend(ctx, veloxquant.OptimizationRequest{
+	Model:         "Qwen3-8B",
+	Architecture:  arch,
+	ContextLength: 32768,
+})
+
+fmt.Println(rec.Profile)             // speed | balanced | memory | maximum-context
+fmt.Println(rec.CompressionBits)     // e.g. 4
+fmt.Println(rec.Reason)
+```
+
+## AutoPilot
+
+AutoPilot inspects your hardware, picks a compatible model, chooses a safe
+context length and compression strategy, and returns a ready-to-use
+session:
+
+```go
+session, err := client.AutoPilot(ctx, veloxquant.AutoPilotConfig{
+	Task:  "coding",
+	Model: "auto",
+})
+if err != nil {
+	panic(err)
+}
+
+plan := session.Plan() // fully transparent decision trail
+fmt.Println(plan.SelectedModel, plan.ContextLength, plan.Profile)
+
+response, err := session.Chat(ctx, "Build a REST API in Go")
+```
+
+## System Detection
+
+```go
+info, err := client.System.Info(ctx)
+
+fmt.Println(info.Platform, info.Architecture)
+fmt.Println(info.AppleSilicon)
+fmt.Println(veloxquant.FormatBytes(info.TotalMemory))
+fmt.Println(info.RecommendedProfile)
+```
+
+Apple Silicon-specific detection degrades gracefully on Linux and Windows —
+`AppleSilicon` is simply `false`, and the SDK never panics on unsupported
+platforms.
+
+## Monitoring
+
+```go
+monitor := client.Monitor()
+monitor.Start(ctx)
+
+monitor.Subscribe(func(m veloxquant.Metrics) {
+	fmt.Println(veloxquant.FormatBytes(m.MemoryUsedBytes))
+})
+```
+
+## CLI
+
+```bash
+go install github.com/rajveer43/veloxquant-go/cmd/vq@latest
+```
+
+```bash
+vq doctor              # check system readiness
+vq analyze Qwen3-8B    # memory breakdown for a model
+vq recommend           # recommended models + profile for this hardware
+vq benchmark Qwen3-8B  # tokens/sec, TTFT, memory (requires a running runtime)
+vq serve               # connect to a local VeloxQuant runtime
+```
+
+## Architecture
+
+```text
+veloxquant-go/
+├── client.go, config.go, types.go, errors.go, autopilot.go   Top-level API
+├── system/       Hardware & platform detection (build-tagged per OS)
+├── memory/       Model + KV-cache memory estimation
+├── optimize/     Optimization profile recommendations
+├── models/       Curated model registry + task-based recommendations
+├── runtime/      HTTP client for the local VeloxQuant runtime
+├── openai/       OpenAI-compatible chat completions + streaming
+├── monitor/      Thread-safe memory/inference metrics monitoring
+├── cmd/vq/       CLI
+└── examples/     Runnable examples
+```
+
+Every subsystem is exposed as an interface (`system.Detector`,
+`memory.Estimator`, `optimize.Optimizer`, `models.Registry`) so it can be
+mocked in tests without touching real hardware or a live runtime.
+
+## Examples
+
+See [examples/](examples/) for runnable programs: `chat`, `streaming`,
+`autopilot`, and `server`.
+
+## Testing
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+```
+
+## License
+
+MIT
