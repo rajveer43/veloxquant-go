@@ -1,5 +1,7 @@
 # VeloxQuant Go
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/rajveer43/veloxquant-go.svg)](https://pkg.go.dev/github.com/rajveer43/veloxquant-go)
+
 **Memory intelligence and optimization for local AI, in Go.**
 
 VeloxQuant Go is not a wrapper around MLX. It's a Go-native toolkit for
