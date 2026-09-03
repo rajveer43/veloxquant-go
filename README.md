@@ -241,8 +241,8 @@ is tracked with the closest available public signals:
   clones. GitHub exposes 14 days of this under
   [Insights → Traffic](https://github.com/rajveer43/veloxquant-go/graphs/traffic)
   (maintainer access required). A [scheduled workflow](.github/workflows/traffic.yml)
-  snapshots these counts weekly into [`traffic-history.json`](traffic-history.json)
-  so history survives past GitHub's 14-day retention window.
+  snapshots these counts weekly into `traffic-history.json` (committed on
+  first run) so history survives past GitHub's 14-day retention window.
 
 To refresh the history immediately: `gh workflow run traffic.yml`.
 
