@@ -89,6 +89,23 @@ func (m *Monitor) sampleAndNotify(ctx context.Context) {
 	}
 }
 
+// Report pushes an out-of-band Metrics update to subscribers immediately,
+// without waiting for the next periodic sample. It's meant for events that
+// happen between ticks — e.g. a completed inference request — that
+// subscribers should see right away rather than only in the next periodic
+// sample. Safe to call whether or not the Monitor has been Started.
+func (m *Monitor) Report(metrics Metrics) {
+	m.mu.Lock()
+	m.latest = metrics
+	subs := make([]Subscriber, len(m.subscribers))
+	copy(subs, m.subscribers)
+	m.mu.Unlock()
+
+	for _, sub := range subs {
+		sub(metrics)
+	}
+}
+
 // Stop halts periodic sampling and waits for the background goroutine to
 // exit. Safe to call multiple times.
 func (m *Monitor) Stop() {

@@ -53,6 +53,7 @@ Usage:
   vq recommend           Recommend models and a profile for this hardware
   vq benchmark <model>   Benchmark inference performance for a model
   vq serve               Connect to (or report on) the VeloxQuant runtime
+  vq serve --model <id>  Launch a local VeloxQuant runtime process for a model
 
 Flags:
   -h, --help             Show this help message`)

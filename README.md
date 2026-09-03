@@ -176,13 +176,20 @@ platforms.
 ## Monitoring
 
 ```go
-monitor := client.Monitor()
-monitor.Start(ctx)
+mon := client.Monitor(veloxquant.WithMonitorInterval(2 * time.Second))
+mon.Start(ctx)
 
-monitor.Subscribe(func(m veloxquant.Metrics) {
+mon.Subscribe(func(m monitor.Metrics) {
 	fmt.Println(veloxquant.FormatBytes(m.MemoryUsedBytes))
+	fmt.Printf("%.1f tok/s\n", m.TokensPerSecond)
 })
 ```
+
+The Monitor samples system memory on `WithMonitorInterval`'s schedule (5s
+by default). Between samples, every `Chat`/`ChatStream` call made through
+the same `Client` also pushes a live update carrying that request's
+`TokensPerSecond` and `TimeToFirstToken`, so subscribers see inference
+performance as it happens rather than waiting for the next tick.
 
 ## CLI
 
@@ -196,7 +203,14 @@ vq analyze Qwen3-8B    # memory breakdown for a model
 vq recommend           # recommended models + profile for this hardware
 vq benchmark Qwen3-8B  # tokens/sec, TTFT, memory (requires a running runtime)
 vq serve               # connect to a local VeloxQuant runtime
+vq serve --model mlx-community/Qwen3-8B-4bit   # launch a runtime for this model
 ```
+
+`vq serve --model` launches the `veloxquant` CLI (from the
+[VeloxQuant-MLX](https://github.com/rajveer43/VeloxQuant-MLX) Python
+package) as a subprocess, waits for it to report readiness, and prints its
+URL. Press Ctrl+C to stop it. Optional flags: `--method` (KV-cache
+compression method), `--host`, `--port`.
 
 ## Architecture
 

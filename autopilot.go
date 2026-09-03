@@ -88,7 +88,7 @@ func (c *Client) AutoPilot(ctx context.Context, cfg AutoPilotConfig) (*Session, 
 		contextLength = defaultContextLength
 	}
 
-	modelInfo, err := c.selectModel(ctx, cfg, hardware)
+	modelInfo, selectionReason, err := c.selectModel(ctx, cfg, hardware)
 	if err != nil {
 		return nil, fmt.Errorf("autopilot: %w", err)
 	}
@@ -104,6 +104,11 @@ func (c *Client) AutoPilot(ctx context.Context, cfg AutoPilotConfig) (*Session, 
 
 	safetyMargin := uint64(float64(hardware.AvailableMemory) * safetyMarginRatio)
 
+	reason := rec.Reason
+	if selectionReason != "" {
+		reason = selectionReason + "; " + rec.Reason
+	}
+
 	plan := AutoPilotPlan{
 		Hardware:             hardware,
 		SelectedModel:        modelInfo.Name,
@@ -112,36 +117,39 @@ func (c *Client) AutoPilot(ctx context.Context, cfg AutoPilotConfig) (*Session, 
 		EstimatedMemoryBytes: rec.EstimatedMemoryAfter,
 		SafetyMarginBytes:    safetyMargin,
 		Profile:              rec.Profile,
-		Reason:               rec.Reason,
+		Reason:               reason,
 	}
 
 	return &Session{client: c, plan: plan}, nil
 }
 
-func (c *Client) selectModel(ctx context.Context, cfg AutoPilotConfig, hardware SystemInfo) (models.Info, error) {
+// selectModel picks the model AutoPilot should use, and a human-readable
+// reason for that choice. The reason is empty when the caller pinned a
+// specific model explicitly (there's no ranking decision to explain).
+func (c *Client) selectModel(ctx context.Context, cfg AutoPilotConfig, hardware SystemInfo) (models.Info, string, error) {
 	if cfg.Model != "" && cfg.Model != "auto" {
 		if info, ok := c.Models.registry.Get(cfg.Model); ok {
-			return info, nil
+			return info, "", nil
 		}
-		return models.Info{}, fmt.Errorf("%w: %s", ErrModelNotFound, cfg.Model)
+		return models.Info{}, "", fmt.Errorf("%w: %s", ErrModelNotFound, cfg.Model)
 	}
 
-	candidates, err := c.Models.Recommend(ctx, ModelRecommendationRequest{
+	candidates, err := c.Models.RecommendScored(ctx, ModelRecommendationRequest{
 		Task:                 cfg.Task,
 		AvailableMemoryBytes: hardware.AvailableMemory,
 		ContextLength:        cfg.ContextLength,
 	})
 	if err != nil {
-		return models.Info{}, err
+		return models.Info{}, "", err
 	}
 
 	if len(candidates) == 0 {
 		all := c.Models.List()
 		if len(all) == 0 {
-			return models.Info{}, fmt.Errorf("%w: no models in registry", ErrModelNotFound)
+			return models.Info{}, "", fmt.Errorf("%w: no models in registry", ErrModelNotFound)
 		}
-		return models.Info{}, fmt.Errorf("%w: no model fits available memory (%s) for task %q", ErrInsufficientMemory, FormatBytes(hardware.AvailableMemory), cfg.Task)
+		return models.Info{}, "", fmt.Errorf("%w: no model fits available memory (%s) for task %q", ErrInsufficientMemory, FormatBytes(hardware.AvailableMemory), cfg.Task)
 	}
 
-	return candidates[0], nil
+	return candidates[0].Info, candidates[0].Reason, nil
 }

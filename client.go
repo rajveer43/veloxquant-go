@@ -8,6 +8,7 @@ package veloxquant
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rajveer43/veloxquant-go/memory"
@@ -139,9 +140,19 @@ type ModelRecommendationRequest struct {
 }
 
 // Recommend returns models suited to the requested task that fit within
-// AvailableMemoryBytes.
+// AvailableMemoryBytes, ranked best first.
 func (m *ModelsService) Recommend(ctx context.Context, req ModelRecommendationRequest) ([]models.Info, error) {
 	return models.Recommend(ctx, m.registry, m.estimator, models.RecommendationRequest{
+		Task:                 models.Task(req.Task),
+		AvailableMemoryBytes: req.AvailableMemoryBytes,
+		ContextLength:        req.ContextLength,
+	})
+}
+
+// RecommendScored behaves like Recommend but also returns the score and
+// human-readable reasoning behind each candidate's ranking.
+func (m *ModelsService) RecommendScored(ctx context.Context, req ModelRecommendationRequest) ([]models.Scored, error) {
+	return models.RecommendScored(ctx, m.registry, m.estimator, models.RecommendationRequest{
 		Task:                 models.Task(req.Task),
 		AvailableMemoryBytes: req.AvailableMemoryBytes,
 		ContextLength:        req.ContextLength,
@@ -161,6 +172,27 @@ type Client struct {
 
 	runtimeClient *runtime.Client
 	openaiClient  *openai.Client
+
+	metricsMu   sync.RWMutex
+	metricsSink func(monitor.Metrics)
+}
+
+// setMetricsSink registers the sink that Chat and ChatStream report live
+// inference metrics to. Passing nil disables reporting. It is safe for
+// concurrent use.
+func (c *Client) setMetricsSink(sink func(monitor.Metrics)) {
+	c.metricsMu.Lock()
+	c.metricsSink = sink
+	c.metricsMu.Unlock()
+}
+
+func (c *Client) reportMetrics(m monitor.Metrics) {
+	c.metricsMu.RLock()
+	sink := c.metricsSink
+	c.metricsMu.RUnlock()
+	if sink != nil {
+		sink(m)
+	}
 }
 
 // NewClient constructs a VeloxQuant Client. By default it connects to a
@@ -221,7 +253,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 
 	elapsed := time.Since(start)
 
-	return ChatResponse{
+	metrics := InferenceMetrics{TotalDuration: elapsed}
+	if resp.Usage.CompletionTokens > 0 && elapsed > 0 {
+		metrics.TokensPerSecond = float64(resp.Usage.CompletionTokens) / elapsed.Seconds()
+	}
+
+	chatResp := ChatResponse{
 		ID:    resp.ID,
 		Model: resp.Model,
 		Text:  text,
@@ -230,24 +267,38 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 			CompletionTokens: resp.Usage.CompletionTokens,
 			TotalTokens:      resp.Usage.TotalTokens,
 		},
-		Metrics: InferenceMetrics{
-			TotalDuration: elapsed,
-		},
-	}, nil
+		Metrics: metrics,
+	}
+
+	c.reportMetrics(monitor.Metrics{
+		TokensPerSecond:  metrics.TokensPerSecond,
+		TimeToFirstToken: metrics.TimeToFirstToken,
+	})
+
+	return chatResp, nil
 }
 
 // ChatStream is a handle to a streaming chat completion. Call Next to
 // advance, Chunk to read the current piece of text, and Err to check for
-// errors after iteration ends. Always call Close when done.
+// errors after iteration ends. Always call Close when done. Once the
+// stream is finished (Next returns false with a nil Err), Metrics reports
+// the completed request's tokens/sec and time-to-first-token.
 type ChatStream struct {
 	inner *openai.Stream
 	chunk ChatChunk
+
+	start        time.Time
+	firstTokenAt time.Time
+	tokenChunks  int
+	sink         func(monitor.Metrics)
+	reported     bool
 }
 
 // Next advances the stream. It returns false when the stream ends (check
 // Err for failures).
 func (s *ChatStream) Next() bool {
 	if !s.inner.Next() {
+		s.reportMetrics()
 		return false
 	}
 	chunk := s.inner.Chunk()
@@ -257,6 +308,13 @@ func (s *ChatStream) Next() bool {
 	if len(chunk.Choices) > 0 {
 		text = chunk.Choices[0].Delta.Content
 		done = chunk.Choices[0].FinishReason != nil
+	}
+
+	if text != "" {
+		if s.tokenChunks == 0 {
+			s.firstTokenAt = time.Now()
+		}
+		s.tokenChunks++
 	}
 
 	s.chunk = ChatChunk{Text: text, Done: done}
@@ -273,6 +331,34 @@ func (s *ChatStream) Err() error {
 	return s.inner.Err()
 }
 
+// Metrics reports performance characteristics of the stream so far.
+// TokensPerSecond and TimeToFirstToken are approximate: they're derived
+// from the number of non-empty content chunks and wall-clock time, since
+// OpenAI-compatible streaming responses don't report per-chunk token
+// counts.
+func (s *ChatStream) Metrics() InferenceMetrics {
+	m := InferenceMetrics{TotalDuration: time.Since(s.start)}
+	if !s.firstTokenAt.IsZero() {
+		m.TimeToFirstToken = s.firstTokenAt.Sub(s.start)
+	}
+	if s.tokenChunks > 0 && m.TotalDuration > 0 {
+		m.TokensPerSecond = float64(s.tokenChunks) / m.TotalDuration.Seconds()
+	}
+	return m
+}
+
+func (s *ChatStream) reportMetrics() {
+	if s.reported || s.sink == nil {
+		return
+	}
+	s.reported = true
+	m := s.Metrics()
+	s.sink(monitor.Metrics{
+		TokensPerSecond:  m.TokensPerSecond,
+		TimeToFirstToken: m.TimeToFirstToken,
+	})
+}
+
 // Close releases the underlying connection.
 func (s *ChatStream) Close() error {
 	return s.inner.Close()
@@ -284,7 +370,11 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (*ChatStream, 
 	if err != nil {
 		return nil, fmt.Errorf("chat stream: %w", err)
 	}
-	return &ChatStream{inner: stream}, nil
+	return &ChatStream{
+		inner: stream,
+		start: time.Now(),
+		sink:  c.reportMetrics,
+	}, nil
 }
 
 func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
@@ -300,20 +390,70 @@ func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 	}
 }
 
-// Monitor returns a Monitor sampling memory and inference metrics from
-// this client's system detector.
-func (c *Client) Monitor() *monitor.Monitor {
+const defaultMonitorInterval = 5 * time.Second
+
+// MonitorConfig configures a Monitor returned by Client.Monitor.
+type MonitorConfig struct {
+	interval time.Duration
+}
+
+// MonitorOption configures a Monitor. Use the WithMonitor* functions to
+// build options.
+type MonitorOption func(*MonitorConfig)
+
+// WithMonitorInterval sets how often the Monitor samples system memory.
+// Defaults to 5 seconds.
+func WithMonitorInterval(interval time.Duration) MonitorOption {
+	return func(c *MonitorConfig) { c.interval = interval }
+}
+
+// Monitor returns a Monitor sampling memory from this client's system
+// detector at a periodic interval (5s by default; override with
+// WithMonitorInterval). Between samples, any Chat or ChatStream call made
+// through this Client also pushes a live update carrying that request's
+// TokensPerSecond and TimeToFirstToken, merged onto the most recent memory
+// sample — so subscribers see inference performance as it happens rather
+// than waiting for the next tick.
+func (c *Client) Monitor(opts ...MonitorOption) *monitor.Monitor {
+	cfg := MonitorConfig{interval: defaultMonitorInterval}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	interval := cfg.interval
+	if interval <= 0 {
+		interval = defaultMonitorInterval
+	}
+
+	var mu sync.Mutex
+	var lastMemUsed, lastMemAvailable uint64
+
 	sampler := monitor.SamplerFunc(func(ctx context.Context) (monitor.Metrics, error) {
 		info, err := c.System.Info(ctx)
 		if err != nil {
 			return monitor.Metrics{}, err
 		}
+		mu.Lock()
+		lastMemUsed = info.TotalMemory - info.AvailableMemory
+		lastMemAvailable = info.AvailableMemory
+		mu.Unlock()
 		return monitor.Metrics{
-			MemoryUsedBytes:      info.TotalMemory - info.AvailableMemory,
-			MemoryAvailableBytes: info.AvailableMemory,
+			MemoryUsedBytes:      lastMemUsed,
+			MemoryAvailableBytes: lastMemAvailable,
 		}, nil
 	})
-	return monitor.New(sampler, 5*time.Second)
+
+	m := monitor.New(sampler, interval)
+
+	c.setMetricsSink(func(inference monitor.Metrics) {
+		mu.Lock()
+		inference.MemoryUsedBytes = lastMemUsed
+		inference.MemoryAvailableBytes = lastMemAvailable
+		mu.Unlock()
+		m.Report(inference)
+	})
+
+	return m
 }
 
 // FormatBytes renders a byte count as a human-readable string, e.g.

@@ -66,6 +66,47 @@ func TestMonitorStartIsIdempotent(t *testing.T) {
 	m.Stop()
 }
 
+func TestMonitorReportNotifiesImmediately(t *testing.T) {
+	sampler := SamplerFunc(func(ctx context.Context) (Metrics, error) {
+		return Metrics{}, nil
+	})
+	// Long interval: any notification must come from Report, not a tick.
+	m := New(sampler, time.Hour)
+
+	received := make(chan Metrics, 1)
+	m.Subscribe(func(metrics Metrics) {
+		received <- metrics
+	})
+
+	m.Report(Metrics{TokensPerSecond: 42})
+
+	select {
+	case metrics := <-received:
+		if metrics.TokensPerSecond != 42 {
+			t.Errorf("TokensPerSecond = %f, want 42", metrics.TokensPerSecond)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Report to notify subscriber")
+	}
+
+	if m.Metrics().TokensPerSecond != 42 {
+		t.Errorf("Metrics().TokensPerSecond = %f, want 42", m.Metrics().TokensPerSecond)
+	}
+}
+
+func TestMonitorReportWithoutStart(t *testing.T) {
+	sampler := SamplerFunc(func(ctx context.Context) (Metrics, error) {
+		return Metrics{}, nil
+	})
+	m := New(sampler, time.Hour)
+
+	// Report should work even if Start was never called.
+	m.Report(Metrics{TokensPerSecond: 7})
+	if m.Metrics().TokensPerSecond != 7 {
+		t.Errorf("Metrics().TokensPerSecond = %f, want 7", m.Metrics().TokensPerSecond)
+	}
+}
+
 func TestMonitorConcurrentSubscribeAndMetrics(t *testing.T) {
 	sampler := SamplerFunc(func(ctx context.Context) (Metrics, error) {
 		return Metrics{MemoryUsedBytes: 42}, nil
