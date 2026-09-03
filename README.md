@@ -1,6 +1,7 @@
 # VeloxQuant Go
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/rajveer43/veloxquant-go.svg)](https://pkg.go.dev/github.com/rajveer43/veloxquant-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rajveer43/veloxquant-go)](https://goreportcard.com/report/github.com/rajveer43/veloxquant-go)
 
 **Memory intelligence and optimization for local AI, in Go.**
 
@@ -228,6 +229,22 @@ go test ./...
 go test -race ./...
 go vet ./...
 ```
+
+## Package Stats
+
+Go modules have no central download counter (unlike npm/PyPI), so adoption
+is tracked with the closest available public signals:
+
+- **[Imported by](https://pkg.go.dev/github.com/rajveer43/veloxquant-go?tab=importedby)**
+  on pkg.go.dev — count of public modules that import this package.
+- **Clone/view traffic** — `go get` and `git clone` both register as repo
+  clones. GitHub exposes 14 days of this under
+  [Insights → Traffic](https://github.com/rajveer43/veloxquant-go/graphs/traffic)
+  (maintainer access required). A [scheduled workflow](.github/workflows/traffic.yml)
+  snapshots these counts weekly into [`traffic-history.json`](traffic-history.json)
+  so history survives past GitHub's 14-day retention window.
+
+To refresh the history immediately: `gh workflow run traffic.yml`.
 
 ## License
 
