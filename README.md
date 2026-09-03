@@ -1,5 +1,6 @@
 # VeloxQuant Go
 
+[![CI](https://github.com/rajveer43/veloxquant-go/actions/workflows/ci.yml/badge.svg)](https://github.com/rajveer43/veloxquant-go/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rajveer43/veloxquant-go.svg)](https://pkg.go.dev/github.com/rajveer43/veloxquant-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rajveer43/veloxquant-go)](https://goreportcard.com/report/github.com/rajveer43/veloxquant-go)
 
@@ -245,6 +246,19 @@ is tracked with the closest available public signals:
   first run) so history survives past GitHub's 14-day retention window.
 
 To refresh the history immediately: `gh workflow run traffic.yml`.
+
+## Releasing
+
+Releases are cut from tags:
+
+1. Update `CHANGELOG.md`, moving the relevant `[Unreleased]` entries under a
+   new `## [x.y.z] - YYYY-MM-DD` heading.
+2. Commit, then tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. The [release workflow](.github/workflows/release.yml) runs CI against the
+   tag and publishes a GitHub release with auto-generated notes.
+
+pkg.go.dev picks up new tags automatically via the Go module proxy — no
+separate publish step is needed there.
 
 ## License
 

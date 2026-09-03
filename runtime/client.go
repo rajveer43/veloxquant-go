@@ -51,11 +51,7 @@ func (c *Client) Health(ctx context.Context) (Status, error) {
 		return Status{}, fmt.Errorf("check runtime health: %w", err)
 	}
 
-	return Status{
-		Healthy: resp.Healthy,
-		Version: resp.Version,
-		Engine:  resp.Engine,
-	}, nil
+	return Status(resp), nil
 }
 
 // HTTP exposes the underlying shared HTTP client for use by other packages
