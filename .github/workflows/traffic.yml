@@ -18,7 +18,12 @@ jobs:
 
       - name: Snapshot clone/view traffic
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The traffic/clones and traffic/views endpoints reject the
+          # built-in GITHUB_TOKEN outright (HTTP 403 "Resource not
+          # accessible by integration") regardless of the permissions
+          # granted above; they require a personal access token from a
+          # user with push access to the repo.
+          GH_TOKEN: ${{ secrets.TRAFFIC_PAT }}
         run: .github/scripts/record_traffic.sh
 
       - name: Commit updated history
