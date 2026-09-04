@@ -104,9 +104,12 @@ type ChatChunk struct {
 	Text string
 	Done bool
 }
+
+// LocalModelInfo describes a model found in the local model cache, as
+// returned by ModelsService.Local.
 type LocalModelInfo struct {
-	Name         string    `json:"name"`
-	Path         string    `json:"path"`
-	SizeBytes    uint64    `json:"size_bytes"`
-	LastModified time.Time `json:"last_modified,omitempty"`
+	Name         string     `json:"name"`
+	Path         string     `json:"path"`
+	SizeBytes    uint64     `json:"size_bytes"`
+	LastModified *time.Time `json:"last_modified,omitempty"`
 }

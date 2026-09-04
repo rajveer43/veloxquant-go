@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// LocalModel describes a model found in the local model cache directory.
 type LocalModel struct {
 	Name         string
 	Path         string
@@ -16,6 +17,10 @@ type LocalModel struct {
 	LastModified time.Time
 }
 
+// LocalCacheDir returns the platform-appropriate local model cache
+// directory: $HF_HOME/hub if HF_HOME is set, otherwise
+// ~/.cache/huggingface/hub. It returns "" if the home directory can't be
+// determined.
 func LocalCacheDir() string {
 	if hfHome := os.Getenv("HF_HOME"); hfHome != "" {
 		return filepath.Join(hfHome, "hub")
@@ -26,13 +31,20 @@ func LocalCacheDir() string {
 	}
 	return filepath.Join(home, ".cache", "huggingface", "hub")
 }
-func ScanLocal(ctx context.Context, customDir ...string) ([]LocalModel, error) {
+
+// ScanLocal scans the local model cache directory (see LocalCacheDir) and
+// returns the models found on disk. It returns an empty slice, not an
+// error, if the cache directory doesn't exist or can't be read.
+func ScanLocal(ctx context.Context) ([]LocalModel, error) {
+	return scanLocalDir(ctx, LocalCacheDir())
+}
+
+// scanLocalDir is the implementation behind ScanLocal, taking an explicit
+// directory so tests can point it at a temporary cache without touching
+// HF_HOME or the real user cache directory.
+func scanLocalDir(ctx context.Context, dir string) ([]LocalModel, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	dir := LocalCacheDir()
-	if len(customDir) > 0 && customDir[0] != "" {
-		dir = customDir[0]
 	}
 	if dir == "" {
 		return []LocalModel{}, nil

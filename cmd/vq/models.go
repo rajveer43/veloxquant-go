@@ -46,7 +46,7 @@ func runModels(args []string) error {
 		for _, m := range localModels {
 			totalSize += m.SizeBytes
 			modTime := "-"
-			if !m.LastModified.IsZero() {
+			if m.LastModified != nil {
 				modTime = m.LastModified.Format("2006-01-02 15:04")
 			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",

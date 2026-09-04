@@ -7,11 +7,23 @@ import (
 	"testing"
 )
 
+func TestScanLocal_EmptyDir(t *testing.T) {
+	ctx := context.Background()
+
+	models, err := scanLocalDir(ctx, "")
+	if err != nil {
+		t.Fatalf("expected nil error on empty directory, got %v", err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("expected 0 models, got %d", len(models))
+	}
+}
+
 func TestScanLocal_MissingDir(t *testing.T) {
 	ctx := context.Background()
 	missingDir := filepath.Join(t.TempDir(), "non-existent")
 
-	models, err := ScanLocal(ctx, missingDir)
+	models, err := scanLocalDir(ctx, missingDir)
 	if err != nil {
 		t.Fatalf("expected nil error on missing directory, got %v", err)
 	}
@@ -35,7 +47,7 @@ func TestScanLocal_DiscoversModels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	models, err := ScanLocal(ctx, cacheDir)
+	models, err := scanLocalDir(ctx, cacheDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
