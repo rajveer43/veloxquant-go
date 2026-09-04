@@ -317,6 +317,75 @@ func TestClientRuntimeHealthUnavailable(t *testing.T) {
 	}
 }
 
+func TestClientEmbed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/embeddings" {
+			t.Errorf("path = %s, want /embeddings", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"model": "test-embed-model",
+			"data": []map[string]any{
+				{"index": 0, "embedding": []float64{0.1, 0.2}},
+				{"index": 1, "embedding": []float64{0.3, 0.4}},
+			},
+			"usage": map[string]int{"prompt_tokens": 6, "total_tokens": 6},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(WithOpenAICompatibleRuntime(srv.URL))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	resp, err := c.Embed(context.Background(), EmbedRequest{
+		Model: "test-embed-model",
+		Input: []string{"hello", "world"},
+	})
+	if err != nil {
+		t.Fatalf("Embed() error = %v", err)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("len(Data) = %d, want 2", len(resp.Data))
+	}
+	if resp.Data[1].Vector[0] != 0.3 {
+		t.Errorf("Data[1].Vector[0] = %v, want 0.3", resp.Data[1].Vector[0])
+	}
+	if resp.Usage.TotalTokens != 6 {
+		t.Errorf("TotalTokens = %d, want 6", resp.Usage.TotalTokens)
+	}
+}
+
+func TestClientEmbedSingleString(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		json.NewEncoder(w).Encode(map[string]any{
+			"model": "test-embed-model",
+			"data": []map[string]any{
+				{"index": 0, "embedding": []float64{0.5}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(WithOpenAICompatibleRuntime(srv.URL))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	if _, err := c.Embed(context.Background(), EmbedRequest{
+		Model: "test-embed-model",
+		Input: "hello",
+	}); err != nil {
+		t.Fatalf("Embed() error = %v", err)
+	}
+
+	if gotBody["input"] != "hello" {
+		t.Errorf("input = %v, want %q", gotBody["input"], "hello")
+	}
+}
+
 func TestFormatBytesTopLevel(t *testing.T) {
 	if got := FormatBytes(1024); got != "1.0 KB" {
 		t.Errorf("FormatBytes(1024) = %q, want 1.0 KB", got)

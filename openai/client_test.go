@@ -50,6 +50,44 @@ func TestClientChatCompletion(t *testing.T) {
 	}
 }
 
+func TestClientEmbeddings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/embeddings" {
+			t.Errorf("path = %s, want /embeddings", r.URL.Path)
+		}
+		var req EmbeddingsRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		json.NewEncoder(w).Encode(EmbeddingsResponse{
+			Model: req.Model,
+			Data: []Embedding{
+				{Index: 0, Embedding: []float64{0.1, 0.2, 0.3}},
+			},
+			Usage: Usage{PromptTokens: 4, TotalTokens: 4},
+		})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, 5*time.Second)
+
+	resp, err := c.Embeddings(context.Background(), EmbeddingsRequest{
+		Model: "test-embed-model",
+		Input: "hello world",
+	})
+	if err != nil {
+		t.Fatalf("Embeddings() error = %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("len(Data) = %d, want 1", len(resp.Data))
+	}
+	if len(resp.Data[0].Embedding) != 3 {
+		t.Errorf("len(Embedding) = %d, want 3", len(resp.Data[0].Embedding))
+	}
+	if resp.Usage.TotalTokens != 4 {
+		t.Errorf("TotalTokens = %d, want 4", resp.Usage.TotalTokens)
+	}
+}
+
 func TestClientModels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ModelList{Data: []Model{{ID: "m1"}, {ID: "m2"}}})

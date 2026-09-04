@@ -150,6 +150,27 @@ type ChatChunk struct {
 	Done bool
 }
 
+// EmbedRequest describes an embeddings request. Input is either a single
+// string or a []string to embed a batch in one call.
+type EmbedRequest struct {
+	Model string `json:"model"`
+	Input any    `json:"input"`
+}
+
+// Embedding is a single embedding vector within an EmbedResponse, at the
+// same index as its corresponding entry in EmbedRequest.Input.
+type Embedding struct {
+	Index  int       `json:"index"`
+	Vector []float64 `json:"vector"`
+}
+
+// EmbedResponse is the result of an embeddings request.
+type EmbedResponse struct {
+	Model string      `json:"model"`
+	Data  []Embedding `json:"data"`
+	Usage Usage       `json:"usage"`
+}
+
 // LocalModelInfo describes a model found in the local model cache, as
 // returned by ModelsService.Local.
 type LocalModelInfo struct {

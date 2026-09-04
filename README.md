@@ -200,6 +200,72 @@ output, as shown in [examples/structured](examples/structured). Setting
 `ResponseFormat` is still worthwhile: it's forward-compatible with runtime
 versions or OpenAI-compatible backends that do enforce it.
 
+## Multi-turn Conversations
+
+`Client.NewConversation` returns a `Conversation` that accumulates message
+history automatically, so you don't have to rebuild `[]Message` on every
+turn:
+
+```go
+conv := client.NewConversation("mlx-community/Qwen3-8B-4bit", "You are a helpful assistant.")
+
+resp, err := conv.Send(ctx, "What's a KV cache?")
+// ...
+resp, err = conv.Send(ctx, "How does that relate to memory usage?")
+// conv.History() now holds all four messages (system, user, assistant, user, assistant)
+```
+
+If a turn fails, the conversation's history is left exactly as it was
+before that call, so a retried `Send` starts from the same state. Use
+`conv.SendStream(ctx, prompt)` for a streaming reply; history is updated
+once the stream finishes without error. An AutoPilot `Session` also exposes
+`session.Conversation(system)`.
+
+## Embeddings
+
+```go
+response, err := client.Embed(ctx, veloxquant.EmbedRequest{
+	Model: "mlx-community/all-MiniLM-L6-v2-4bit",
+	Input: []string{"first string", "second string"},
+})
+// response.Data[i].Vector holds the embedding for Input[i]
+```
+
+`Input` accepts either a single string or a `[]string` to embed a batch in
+one call, mirroring OpenAI's `/v1/embeddings` request shape. See
+[examples/embeddings](examples/embeddings).
+
+## LangChain Go Adapter
+
+The `langchain/` directory is a separate Go module
+(`github.com/rajveer43/veloxquant-go/langchain`) implementing
+[langchaingo](https://github.com/tmc/langchaingo)'s `llms.Model` interface,
+so a local VeloxQuant runtime can be used as the model backend in a
+langchaingo chain. It's a separate module so that `langchaingo` is not a
+dependency of the core SDK unless you opt in:
+
+```bash
+go get github.com/rajveer43/veloxquant-go/langchain
+```
+
+```go
+import (
+	veloxquant "github.com/rajveer43/veloxquant-go"
+	vqlangchain "github.com/rajveer43/veloxquant-go/langchain"
+	"github.com/tmc/langchaingo/llms"
+)
+
+client, _ := veloxquant.NewClient(veloxquant.WithAutoDetect())
+model := vqlangchain.New(client, "mlx-community/Qwen3-8B-4bit")
+
+completion, err := llms.GenerateFromSinglePrompt(ctx, model, "Explain KV cache in simple terms.")
+```
+
+See [examples/langchain](examples/langchain). The adapter's chat API is
+text-only: message parts other than text (images, tool/function calls) are
+rejected with an error, since the VeloxQuant runtime's chat completion
+endpoint doesn't support them.
+
 ## Monitoring
 
 ```go
@@ -243,14 +309,16 @@ compression method), `--host`, `--port`.
 
 ```text
 veloxquant-go/
-├── client.go, config.go, types.go, errors.go, autopilot.go   Top-level API
+├── client.go, config.go, types.go, errors.go, autopilot.go,
+│   conversation.go                                            Top-level API
 ├── system/       Hardware & platform detection (build-tagged per OS)
 ├── memory/       Model + KV-cache memory estimation
 ├── optimize/     Optimization profile recommendations
 ├── models/       Curated model registry + task-based recommendations
 ├── runtime/      HTTP client for the local VeloxQuant runtime
-├── openai/       OpenAI-compatible chat completions + streaming
+├── openai/       OpenAI-compatible chat completions, streaming, embeddings
 ├── monitor/      Thread-safe memory/inference metrics monitoring
+├── langchain/    langchaingo llms.Model adapter (separate Go module)
 ├── cmd/vq/       CLI
 └── examples/     Runnable examples
 ```
@@ -262,7 +330,8 @@ mocked in tests without touching real hardware or a live runtime.
 ## Examples
 
 See [examples/](examples/) for runnable programs: `chat`, `streaming`,
-`autopilot`, `server`, and `structured`.
+`autopilot`, `server`, `structured`, `conversation`, `embeddings`, and
+`langchain`.
 
 ## Testing
 

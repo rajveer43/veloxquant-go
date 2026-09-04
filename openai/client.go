@@ -31,6 +31,15 @@ func (c *Client) ChatCompletion(ctx context.Context, req ChatRequest) (ChatRespo
 	return resp, nil
 }
 
+// Embeddings performs an embeddings request against POST /v1/embeddings.
+func (c *Client) Embeddings(ctx context.Context, req EmbeddingsRequest) (EmbeddingsResponse, error) {
+	var resp EmbeddingsResponse
+	if err := c.http.DoJSON(ctx, "POST", "/embeddings", req, &resp); err != nil {
+		return EmbeddingsResponse{}, fmt.Errorf("embeddings: %w", err)
+	}
+	return resp, nil
+}
+
 // Models lists models available on the runtime via GET /v1/models.
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	var resp ModelList

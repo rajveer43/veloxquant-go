@@ -75,6 +75,27 @@ type StreamChunk struct {
 	Choices []StreamChoice `json:"choices"`
 }
 
+// EmbeddingsRequest is an OpenAI-compatible embeddings request.
+type EmbeddingsRequest struct {
+	Model string `json:"model"`
+	// Input is either a single string or a []string, matching OpenAI's
+	// input field, which accepts one string or a batch of strings.
+	Input any `json:"input"`
+}
+
+// Embedding is a single embedding result within an EmbeddingsResponse.
+type Embedding struct {
+	Index     int       `json:"index"`
+	Embedding []float64 `json:"embedding"`
+}
+
+// EmbeddingsResponse is an OpenAI-compatible embeddings response.
+type EmbeddingsResponse struct {
+	Model string      `json:"model"`
+	Data  []Embedding `json:"data"`
+	Usage Usage       `json:"usage"`
+}
+
 // Model describes a model available on the runtime, as returned by
 // GET /v1/models.
 type Model struct {

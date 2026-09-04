@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Models.Local` scans the local model cache directory (MLX/Hugging Face
   hub convention) and reports downloaded models, their size on disk, and
   last-modified time; exposed via `vq models --local`.
+- `Client.NewConversation` / `Conversation.Send` / `Conversation.SendStream`:
+  a history-tracking wrapper around `Chat`/`ChatStream` so callers don't
+  have to rebuild `[]Message` on every turn. A failed turn leaves history
+  unchanged. Also available as `session.Conversation(system)` on an
+  AutoPilot `Session`.
+- `Client.Embed` and `openai.Client.Embeddings`: embeddings support via the
+  OpenAI-compatible `/v1/embeddings` endpoint, mirroring the `Chat` request
+  pattern. `EmbedRequest.Input` accepts a single string or a `[]string`.
+- `langchain/`: a separate Go module implementing langchaingo's
+  (`github.com/tmc/langchaingo`) `llms.Model` interface backed by
+  `veloxquant.Client`, so a local VeloxQuant runtime can serve as the model
+  in a langchaingo chain. Kept out of the root module's dependency graph;
+  see `examples/langchain`.
 
 ## [0.3.0] - 2026-09-03
 

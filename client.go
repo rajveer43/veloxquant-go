@@ -403,6 +403,34 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (*ChatStream, 
 	}, nil
 }
 
+// Embed sends an embeddings request to the configured runtime and returns
+// the resulting vectors. req.Input may be a single string or a []string to
+// embed a batch in one call.
+func (c *Client) Embed(ctx context.Context, req EmbedRequest) (EmbedResponse, error) {
+	resp, err := c.openaiClient.Embeddings(ctx, openai.EmbeddingsRequest{
+		Model: req.Model,
+		Input: req.Input,
+	})
+	if err != nil {
+		return EmbedResponse{}, fmt.Errorf("embed: %w", err)
+	}
+
+	data := make([]Embedding, len(resp.Data))
+	for i, e := range resp.Data {
+		data[i] = Embedding{Index: e.Index, Vector: e.Embedding}
+	}
+
+	return EmbedResponse{
+		Model: resp.Model,
+		Data:  data,
+		Usage: Usage{
+			PromptTokens:     resp.Usage.PromptTokens,
+			CompletionTokens: resp.Usage.CompletionTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
+		},
+	}, nil
+}
+
 func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 	messages := make([]openai.Message, len(req.Messages))
 	for i, m := range req.Messages {
