@@ -139,6 +139,24 @@ type ModelRecommendationRequest struct {
 	ContextLength        int
 }
 
+func (m *ModelsService) Local(ctx context.Context) ([]LocalModelInfo, error) {
+	localModels, err := models.ScanLocal(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	infos := make([]LocalModelInfo, len(localModels))
+	for i, lm := range localModels {
+		infos[i] = LocalModelInfo{
+			Name:         lm.Name,
+			Path:         lm.Path,
+			SizeBytes:    lm.SizeBytes,
+			LastModified: lm.LastModified,
+		}
+	}
+	return infos, nil
+}
+
 // Recommend returns models suited to the requested task that fit within
 // AvailableMemoryBytes, ranked best first.
 func (m *ModelsService) Recommend(ctx context.Context, req ModelRecommendationRequest) ([]models.Info, error) {

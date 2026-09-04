@@ -23,6 +23,8 @@ func main() {
 		err = runDoctor(args)
 	case "analyze":
 		err = runAnalyze(args)
+	case "models":
+		err = runModels(args)
 	case "recommend":
 		err = runRecommend(args)
 	case "benchmark":
@@ -50,6 +52,7 @@ func printUsage() {
 Usage:
   vq doctor              Check system readiness for local AI
   vq analyze <model>     Analyze memory requirements for a model
+  vq models [--local]    List registry models or locally cached models
   vq recommend           Recommend models and a profile for this hardware
   vq benchmark <model>   Benchmark inference performance for a model
   vq serve               Connect to (or report on) the VeloxQuant runtime

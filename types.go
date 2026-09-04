@@ -104,3 +104,9 @@ type ChatChunk struct {
 	Text string
 	Done bool
 }
+type LocalModelInfo struct {
+	Name         string    `json:"name"`
+	Path         string    `json:"path"`
+	SizeBytes    uint64    `json:"size_bytes"`
+	LastModified time.Time `json:"last_modified,omitempty"`
+}
