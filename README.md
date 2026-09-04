@@ -173,6 +173,33 @@ Apple Silicon-specific detection degrades gracefully on Linux and Windows —
 `AppleSilicon` is simply `false`, and the SDK never panics on unsupported
 platforms.
 
+## Structured Output
+
+`ChatRequest.ResponseFormat` mirrors OpenAI's `response_format`, built with
+`JSONMode()` or `JSONSchema(name, schema, strict)`:
+
+```go
+schema := map[string]any{
+	"type":       "object",
+	"properties": map[string]any{"name": map[string]any{"type": "string"}},
+	"required":   []string{"name"},
+}
+
+response, err := client.Chat(ctx, veloxquant.ChatRequest{
+	Model:          "mlx-community/Qwen3-8B-4bit",
+	Messages:       messages,
+	ResponseFormat: veloxquant.JSONSchema("person", schema, true),
+})
+```
+
+The field is always sent on the wire, but the VeloxQuant runtime serves
+completions via `mlx_lm.server`, which does not read or enforce
+`response_format` as of this writing — it won't constrain decoding to match
+your schema. Prompt the model for the shape explicitly and validate its
+output, as shown in [examples/structured](examples/structured). Setting
+`ResponseFormat` is still worthwhile: it's forward-compatible with runtime
+versions or OpenAI-compatible backends that do enforce it.
+
 ## Monitoring
 
 ```go
@@ -235,7 +262,7 @@ mocked in tests without touching real hardware or a live runtime.
 ## Examples
 
 See [examples/](examples/) for runnable programs: `chat`, `streaming`,
-`autopilot`, and `server`.
+`autopilot`, `server`, and `structured`.
 
 ## Testing
 

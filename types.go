@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/rajveer43/veloxquant-go/memory"
+	"github.com/rajveer43/veloxquant-go/openai"
 )
 
 // Precision re-exports memory.Precision at the top level so callers don't
@@ -71,6 +72,50 @@ type ChatRequest struct {
 	MaxTokens   int     `json:"max_tokens,omitempty"`
 
 	Stream bool `json:"stream,omitempty"`
+
+	// ResponseFormat requests a specific output shape from the model, in
+	// OpenAI's response_format wire format. Build it with JSONMode or
+	// JSONSchema.
+	//
+	// The VeloxQuant runtime serves chat completions via mlx_lm.server,
+	// which as of this writing does not read or enforce response_format:
+	// it is forwarded on the wire for forward-compatibility and for
+	// OpenAI-compatible backends that do honor it, but the local runtime
+	// will not constrain decoding to match it. Prompt the model
+	// explicitly to return the desired shape, and validate its output;
+	// do not rely on ResponseFormat alone for structured extraction
+	// against the VeloxQuant runtime today.
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+}
+
+// ResponseFormat requests a specific chat completion output format.
+type ResponseFormat = openai.ResponseFormat
+
+// JSONSchemaFormat re-exports openai.JSONSchema at the top level.
+type JSONSchemaFormat = openai.JSONSchema
+
+// JSONMode returns a ResponseFormat requesting a JSON object response
+// (OpenAI's response_format: {"type": "json_object"}), without
+// constraining it to a specific schema.
+func JSONMode() *ResponseFormat {
+	return &ResponseFormat{Type: "json_object"}
+}
+
+// JSONSchema returns a ResponseFormat requesting a response constrained to
+// the given schema (OpenAI's response_format: {"type": "json_schema", ...}).
+// name identifies the schema; schema is typically a map[string]any
+// describing a JSON Schema object, or a value that marshals to one. Set
+// strict to true to request exact schema adherence, for backends that
+// support it.
+func JSONSchema(name string, schema any, strict bool) *ResponseFormat {
+	return &ResponseFormat{
+		Type: "json_schema",
+		JSONSchema: &JSONSchemaFormat{
+			Name:   name,
+			Strict: strict,
+			Schema: schema,
+		},
+	}
 }
 
 // Usage reports token accounting for a chat completion.

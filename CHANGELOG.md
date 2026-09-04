@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ChatRequest.ResponseFormat`, with `veloxquant.JSONMode()` and
+  `veloxquant.JSONSchema(name, schema, strict)` helpers, passed through to
+  the runtime's OpenAI-compatible endpoint. The VeloxQuant runtime serves
+  completions via `mlx_lm.server`, which does not enforce `response_format`
+  server-side as of this writing; see the `ResponseFormat` doc comment and
+  the new `examples/structured` for the prompt-and-validate pattern this
+  requires in the meantime.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added

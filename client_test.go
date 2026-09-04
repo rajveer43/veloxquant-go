@@ -128,6 +128,65 @@ func TestClientChat(t *testing.T) {
 	}
 }
 
+func TestClientChatSendsResponseFormat(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":      "resp-1",
+			"model":   "test-model",
+			"choices": []map[string]any{{"index": 0, "message": map[string]string{"role": "assistant", "content": `{"ok":true}`}}},
+			"usage":   map[string]int{"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(WithOpenAICompatibleRuntime(srv.URL))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	schema := map[string]any{"type": "object"}
+	_, err = c.Chat(context.Background(), ChatRequest{
+		Model:          "test-model",
+		Messages:       []Message{{Role: "user", Content: "hello"}},
+		ResponseFormat: JSONSchema("thing", schema, true),
+	})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+
+	rf, ok := gotBody["response_format"].(map[string]any)
+	if !ok {
+		t.Fatalf("response_format missing or wrong type in request body: %#v", gotBody["response_format"])
+	}
+	if rf["type"] != "json_schema" {
+		t.Errorf("response_format.type = %v, want json_schema", rf["type"])
+	}
+	js, ok := rf["json_schema"].(map[string]any)
+	if !ok {
+		t.Fatalf("response_format.json_schema missing or wrong type: %#v", rf["json_schema"])
+	}
+	if js["name"] != "thing" {
+		t.Errorf("json_schema.name = %v, want thing", js["name"])
+	}
+	if js["strict"] != true {
+		t.Errorf("json_schema.strict = %v, want true", js["strict"])
+	}
+}
+
+func TestJSONMode(t *testing.T) {
+	rf := JSONMode()
+	if rf.Type != "json_object" {
+		t.Errorf("Type = %q, want json_object", rf.Type)
+	}
+	if rf.JSONSchema != nil {
+		t.Errorf("JSONSchema = %+v, want nil", rf.JSONSchema)
+	}
+}
+
 func TestClientChatPopulatesTokensPerSecond(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{
