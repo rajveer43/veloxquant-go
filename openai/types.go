@@ -11,11 +11,27 @@ type Message struct {
 
 // ChatRequest is an OpenAI-compatible chat completion request.
 type ChatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []Message       `json:"messages"`
+	Temperature    float64         `json:"temperature,omitempty"`
+	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Stream         bool            `json:"stream,omitempty"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+}
+
+// ResponseFormat requests a specific output format from the model, in
+// OpenAI's wire format: {"type": "json_object"} or {"type": "json_schema",
+// "json_schema": {...}}.
+type ResponseFormat struct {
+	Type       string      `json:"type"`
+	JSONSchema *JSONSchema `json:"json_schema,omitempty"`
+}
+
+// JSONSchema names and constrains a json_schema response format.
+type JSONSchema struct {
+	Name   string `json:"name"`
+	Strict bool   `json:"strict,omitempty"`
+	Schema any    `json:"schema"`
 }
 
 // Usage reports token accounting, matching OpenAI's response shape.

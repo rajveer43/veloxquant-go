@@ -409,10 +409,11 @@ func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 		messages[i] = openai.Message{Role: m.Role, Content: m.Content}
 	}
 	return openai.ChatRequest{
-		Model:       req.Model,
-		Messages:    messages,
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
+		Model:          req.Model,
+		Messages:       messages,
+		Temperature:    req.Temperature,
+		MaxTokens:      req.MaxTokens,
+		ResponseFormat: req.ResponseFormat,
 	}
 }
 
