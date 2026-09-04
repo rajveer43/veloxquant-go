@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server-side as of this writing; see the `ResponseFormat` doc comment and
   the new `examples/structured` for the prompt-and-validate pattern this
   requires in the meantime.
+- `Models.Local` scans the local model cache directory (MLX/Hugging Face
+  hub convention) and reports downloaded models, their size on disk, and
+  last-modified time; exposed via `vq models --local`.
 
 ## [0.3.0] - 2026-09-03
 

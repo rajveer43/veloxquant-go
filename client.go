@@ -139,6 +139,32 @@ type ModelRecommendationRequest struct {
 	ContextLength        int
 }
 
+// Local scans the local model cache directory (e.g. the MLX/Hugging Face
+// hub cache) and reports the models found on disk, their size, and when
+// they were last modified. It returns an empty slice, not an error, if the
+// cache directory doesn't exist or can't be read.
+func (m *ModelsService) Local(ctx context.Context) ([]LocalModelInfo, error) {
+	localModels, err := models.ScanLocal(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	infos := make([]LocalModelInfo, len(localModels))
+	for i, lm := range localModels {
+		info := LocalModelInfo{
+			Name:      lm.Name,
+			Path:      lm.Path,
+			SizeBytes: lm.SizeBytes,
+		}
+		if !lm.LastModified.IsZero() {
+			lastModified := lm.LastModified
+			info.LastModified = &lastModified
+		}
+		infos[i] = info
+	}
+	return infos, nil
+}
+
 // Recommend returns models suited to the requested task that fit within
 // AvailableMemoryBytes, ranked best first.
 func (m *ModelsService) Recommend(ctx context.Context, req ModelRecommendationRequest) ([]models.Info, error) {
