@@ -263,3 +263,19 @@ func TestFormatBytesTopLevel(t *testing.T) {
 		t.Errorf("FormatBytes(1024) = %q, want 1.0 KB", got)
 	}
 }
+func TestModelsServiceLocal_GracefulFallback(t *testing.T) {
+	client, err := NewClient()
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+
+	t.Setenv("HF_HOME", t.TempDir())
+
+	localModels, err := client.Models.Local(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(localModels) != 0 {
+		t.Fatalf("expected empty slice, got %d items", len(localModels))
+	}
+}
