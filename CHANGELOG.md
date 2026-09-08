@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `mcp/`: a separate Go module (own `go.mod`, isolated like `langchain/`)
+  letting an `agent.Agent` pull tools from a Model Context Protocol server,
+  backed by the official `github.com/modelcontextprotocol/go-sdk` v1.7.0.
+  `mcp.Connect`/`mcp.FromSession` build an `mcp.ToolSource`, passed to the
+  new `Agent.UseMcpServer(ctx, source)` — a deliberate API-shape divergence
+  from the TS SDK's `useMcpServer(config)`, documented in the package doc
+  comment, since Go has no dynamic-import equivalent to keep the `agent`
+  package MCP-SDK-free otherwise. `unwrapMcpToolResult` matches `mcp.ts`'s
+  content-handling rules exactly (structuredContent preferred; single text
+  block tried as JSON then raw string; other content types return an
+  actionable error). A tool-name collision closes the newly-opened MCP
+  connection before returning the error. See `examples/mcp`.
 - `agent/`: a single-turn tool-calling loop (`agent.New`, `Agent.RegisterTool`,
   `Agent.Run`) over `*veloxquant.Client`, reusing the Phase-0 tool-calling
   wire types end to end. `Tool` is a plain interface so any type (including

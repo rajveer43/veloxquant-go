@@ -466,7 +466,7 @@ mocked in tests without touching real hardware or a live runtime.
 
 See [examples/](examples/) for runnable programs: `chat`, `streaming`,
 `autopilot`, `server`, `structured`, `conversation`, `embeddings`,
-`agent`, and `langchain`.
+`agent`, `mcp`, and `langchain`.
 
 ## Testing
 
