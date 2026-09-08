@@ -35,6 +35,17 @@ func LocalCacheDir() string {
 // ScanLocal scans the local model cache directory (see LocalCacheDir) and
 // returns the models found on disk. It returns an empty slice, not an
 // error, if the cache directory doesn't exist or can't be read.
+//
+// ScanLocal is dependency-free: it walks the cache directory with
+// os.ReadDir/filepath.WalkDir directly and requires nothing beyond the Go
+// standard library. Pull and Delete (see pull.go), by contrast, require a
+// working Python interpreter with huggingface_hub importable — they shell
+// out to it to run huggingface_hub's own download/cache-eviction logic,
+// since that logic (content-addressed blob resolution, partial-download
+// resume, safe eviction of blobs shared across revisions) isn't a
+// dependency-free operation the way a read-only directory scan is. This
+// asymmetry is real and user-facing: a program that only calls ScanLocal
+// has no Python requirement at all; one that calls Pull or Delete does.
 func ScanLocal(ctx context.Context) ([]LocalModel, error) {
 	return scanLocalDir(ctx, LocalCacheDir())
 }

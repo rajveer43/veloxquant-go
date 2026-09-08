@@ -165,6 +165,39 @@ func (m *ModelsService) Local(ctx context.Context) ([]LocalModelInfo, error) {
 	return infos, nil
 }
 
+// PullResult is the result of a successful ModelsService.Pull.
+type PullResult = models.PullResult
+
+// DeleteResult is the result of a successful ModelsService.Delete.
+type DeleteResult = models.DeleteResult
+
+// Pull downloads modelID's weights into the local model cache (see
+// ModelsService.Local) via huggingface_hub's snapshot_download(), shelling
+// out to a Python interpreter — see models.Pull's doc comment for why this
+// (unlike Local/ScanLocal) can't be a dependency-free operation. python
+// selects the interpreter to use; pass "" to use
+// models.ResolvePythonInterpreter's default resolution
+// (VELOXQUANT_PYTHON, then "python3").
+func (m *ModelsService) Pull(ctx context.Context, python string, modelID string) (PullResult, error) {
+	result, err := models.Pull(ctx, models.ResolvePythonInterpreter(python), modelID)
+	if err != nil {
+		return PullResult{}, err
+	}
+	return result, nil
+}
+
+// Delete removes modelID's weights from the local model cache (see
+// ModelsService.Local) via huggingface_hub's cache-eviction API. python
+// selects the interpreter to use; pass "" to use
+// models.ResolvePythonInterpreter's default resolution.
+func (m *ModelsService) Delete(ctx context.Context, python string, modelID string) (DeleteResult, error) {
+	result, err := models.Delete(ctx, models.ResolvePythonInterpreter(python), modelID)
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	return result, nil
+}
+
 // Recommend returns models suited to the requested task that fit within
 // AvailableMemoryBytes, ranked best first.
 func (m *ModelsService) Recommend(ctx context.Context, req ModelRecommendationRequest) ([]models.Info, error) {
@@ -273,8 +306,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 	}
 
 	var text string
+	var finishReason string
+	var toolCalls []ToolCall
 	if len(resp.Choices) > 0 {
 		text = resp.Choices[0].Message.Content
+		finishReason = resp.Choices[0].FinishReason
+		toolCalls = resp.Choices[0].Message.ToolCalls
 	}
 
 	elapsed := time.Since(start)
@@ -285,9 +322,11 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 	}
 
 	chatResp := ChatResponse{
-		ID:    resp.ID,
-		Model: resp.Model,
-		Text:  text,
+		ID:           resp.ID,
+		Model:        resp.Model,
+		Text:         text,
+		FinishReason: finishReason,
+		ToolCalls:    toolCalls,
 		Usage: Usage{
 			PromptTokens:     resp.Usage.PromptTokens,
 			CompletionTokens: resp.Usage.CompletionTokens,
@@ -434,7 +473,12 @@ func (c *Client) Embed(ctx context.Context, req EmbedRequest) (EmbedResponse, er
 func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 	messages := make([]openai.Message, len(req.Messages))
 	for i, m := range req.Messages {
-		messages[i] = openai.Message{Role: m.Role, Content: m.Content}
+		messages[i] = openai.Message{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCalls:  m.ToolCalls,
+			ToolCallID: m.ToolCallID,
+		}
 	}
 	return openai.ChatRequest{
 		Model:          req.Model,
@@ -442,6 +486,7 @@ func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 		Temperature:    req.Temperature,
 		MaxTokens:      req.MaxTokens,
 		ResponseFormat: req.ResponseFormat,
+		Tools:          req.Tools,
 	}
 }
 

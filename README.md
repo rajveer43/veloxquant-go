@@ -137,6 +137,43 @@ fmt.Println(rec.CompressionBits)     // e.g. 4
 fmt.Println(rec.Reason)
 ```
 
+## Local Model Cache
+
+`client.Models` exposes three operations against the local Hugging Face
+model cache (`$HF_HOME/hub`, or `~/.cache/huggingface/hub` by default) —
+`Local` (list), `Pull` (download), and `Delete` (remove). They have
+different dependency requirements:
+
+```go
+localModels, err := client.Models.Local(ctx) // dependency-free: pure filesystem scan
+
+result, err := client.Models.Pull(ctx, "", "mlx-community/Qwen3-8B-4bit") // shells out to Python
+freed, err := client.Models.Delete(ctx, "", "mlx-community/Qwen3-8B-4bit") // shells out to Python
+```
+
+`Local` (backed by `models.ScanLocal`) walks the cache directory directly
+with `os.ReadDir`/`filepath.WalkDir` — no Python dependency at all.
+
+`Pull` and `Delete` (backed by `models.Pull`/`models.Delete`) instead shell
+out to a Python interpreter with `huggingface_hub` importable, running a
+short snippet that calls `snapshot_download()` / the
+`scan_cache_dir().delete_revisions()` eviction API. This is a deliberate,
+asymmetric design, not an oversight: downloading requires resolving a model
+id to its file manifest and content-addressing new blobs against the
+existing cache, and deleting requires safely removing only the blobs a
+revision uniquely owns without corrupting a *different* cached model's
+shared blobs (the cache's on-disk layout is content-addressed via
+symlinks). Reimplementing that logic natively in Go would mean chasing a
+cache format Go doesn't own; shelling out to `huggingface_hub`'s own
+battle-tested implementation is the same choice the TS SDK makes. Pass an
+interpreter path as `Pull`/`Delete`'s second argument, or `""` to use the
+default resolution (`$VELOXQUANT_PYTHON`, then `python3`). A model id is
+always passed as its own subprocess argument, never interpolated into the
+Python source, so it can't be used to inject shell or Python syntax.
+
+`errors.Is(err, veloxquant.ErrHuggingFaceHubUnavailable)` distinguishes "no
+working Python/huggingface_hub" from other pull/delete failures.
+
 ## AutoPilot
 
 AutoPilot inspects your hardware, picks a compatible model, chooses a safe
@@ -235,6 +272,93 @@ response, err := client.Embed(ctx, veloxquant.EmbedRequest{
 one call, mirroring OpenAI's `/v1/embeddings` request shape. See
 [examples/embeddings](examples/embeddings).
 
+## Agent: Tool-Calling Loop
+
+The `agent` package implements a single-turn tool-calling loop over a
+`*veloxquant.Client`: send a prompt, execute any tools the model calls,
+feed the results back, and repeat until the model stops calling tools or a
+maximum number of round trips is used up. It reuses the OpenAI
+`tools`/`tool_calls` wire shape end to end, since the underlying `mlx_lm`
+server (wrapped by `vq serve`) parses tool calls natively against this
+exact shape.
+
+```go
+import "github.com/rajveer43/veloxquant-go/agent"
+
+a := agent.New(client, "mlx-community/Qwen3-4B-4bit")
+
+a.RegisterTool(myWeatherTool) // implements agent.Tool
+
+result, err := a.Run(ctx, "What's the weather in Tokyo?", agent.RunOptions{})
+fmt.Println(result.Text)
+fmt.Println(result.Steps) // every tool call executed, in order
+```
+
+`Tool` is a plain interface (`Name() string`, `Description() string`,
+`Parameters() any`, `Execute(ctx, args json.RawMessage) (any, error)`) so
+any type can implement it — including tools sourced from an MCP server via
+`UseMcpServer` (see the separate `mcp` module below). `RunOptions.MaxSteps`
+defaults to 8 when left unset; exceeding it returns an error wrapping
+`agent.ErrAgentMaxStepsExceeded`. A malformed tool-call-arguments payload,
+an unknown tool name, or a tool's `Execute` returning an error do not abort
+the run — each is fed back to the model as a structured `{"error": "..."}`
+tool result, and the loop continues. `agent` has no third-party dependency
+and lives in the root module. See [examples/agent](examples/agent).
+
+## MCP Tool Sources
+
+The `mcp/` directory is a separate Go module
+(`github.com/rajveer43/veloxquant-go/mcp`) that lets an `agent.Agent` pull
+tools from a Model Context Protocol server, backed by the official
+[`github.com/modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk).
+It's a separate module for the same reason `langchain/` is: so the MCP SDK
+is not a dependency of the core SDK, or even of the dependency-free `agent`
+package, unless you opt in:
+
+```bash
+go get github.com/rajveer43/veloxquant-go/mcp
+```
+
+```go
+import (
+	"github.com/rajveer43/veloxquant-go/agent"
+	vqmcp "github.com/rajveer43/veloxquant-go/mcp"
+)
+
+source, err := vqmcp.Connect(ctx, vqmcp.ServerConfig{
+	Name:      "my-server",
+	Transport: vqmcp.TransportStdio,
+	Command:   "my-mcp-server",
+})
+if err != nil {
+	panic(err)
+}
+
+a := agent.New(client, "mlx-community/Qwen3-4B-4bit")
+if err := a.UseMcpServer(ctx, source); err != nil {
+	panic(err)
+}
+```
+
+**API-shape divergence from the TS SDK:** TS's `Agent.useMcpServer(config)`
+connects to the MCP server itself, via a dynamic `import('./mcp.js')` so
+that importing `agent.ts` doesn't force every caller to depend on the MCP
+SDK. Go has no equivalent runtime-lazy import, so `agent.Agent.UseMcpServer`
+instead takes an already-constructed `mcp.ToolSource` (built via
+`vqmcp.Connect`, from the separate module above) rather than a config
+struct the `agent` package would need to know how to connect itself. This
+is the Go-idiomatic way to preserve the same dependency-isolation property
+TS's dynamic import achieves — a deliberate difference in API shape, not
+an incomplete port.
+
+`unwrapMcpToolResult`'s content-handling rules match `mcp.ts` exactly:
+`structuredContent` is preferred when present; a single text content block
+is tried as JSON, falling back to the raw string; any other content type
+(image/audio/resource/resource_link) returns an explicit, actionable error
+rather than silently dropping it. A tool-name collision between an MCP
+server's tools and an already-registered tool closes the newly-opened MCP
+connection before `UseMcpServer` returns its error.
+
 ## LangChain Go Adapter
 
 The `langchain/` directory is a separate Go module
@@ -293,17 +417,64 @@ go install github.com/rajveer43/veloxquant-go/cmd/vq@latest
 ```bash
 vq doctor              # check system readiness
 vq analyze Qwen3-8B    # memory breakdown for a model
+vq models --local      # list downloaded models and disk usage
+vq models pull <id>    # download a model's weights into the local cache
+vq models delete <id>  # remove a model's weights from the local cache
 vq recommend           # recommended models + profile for this hardware
-vq benchmark Qwen3-8B  # tokens/sec, TTFT, memory (requires a running runtime)
+vq benchmark Qwen3-8B  # tokens/sec, TTFT, resident memory, default vs. optimized
 vq serve               # connect to a local VeloxQuant runtime
 vq serve --model mlx-community/Qwen3-8B-4bit   # launch a runtime for this model
 ```
+
+`vq models pull`/`vq models delete` shell out to a Python interpreter with
+`huggingface_hub` importable (`--python` overrides the interpreter used,
+default `$VELOXQUANT_PYTHON`, then `python3`) — unlike `vq models --local`,
+which is a dependency-free filesystem scan. See
+[Local Model Cache](#local-model-cache) below.
 
 `vq serve --model` launches the `veloxquant` CLI (from the
 [VeloxQuant-MLX](https://github.com/rajveer43/VeloxQuant-MLX) Python
 package) as a subprocess, waits for it to report readiness, and prints its
 URL. Press Ctrl+C to stop it. Optional flags: `--method` (KV-cache
 compression method), `--host`, `--port`.
+
+## Benchmark
+
+`veloxquant.Benchmark(ctx, client, input)` is a library function measuring
+tokens/sec, time-to-first-token, and measured resident memory (RSS) for a
+model on this machine, comparing the default (unoptimized) serve method
+against an optimize()-picked (or explicitly named) compression method:
+
+```go
+result, err := veloxquant.Benchmark(ctx, client, veloxquant.BenchmarkInput{
+	Model:           "mlx-community/Qwen3-8B-4bit",
+	OptimizedMethod: "kivi", // empty lets the runtime pick automatically
+})
+fmt.Println(result.ToMarkdown())
+```
+
+It launches two full runtime processes sequentially — the default method,
+then the optimized one — each fully stopped before the next starts, so
+resource contention between them never skews either measurement.
+`DefaultMethodResidentBytes`/`OptimizedResidentBytes` are `*uint64` (`nil`
+when unmeasurable, e.g. the process already exited or `ps` failed), sampled
+via `ps -o rss= -p <pid>` right after each model finishes loading — this is
+real, measured memory, not the accounting-only byte counts
+`Memory.Estimate` reports, and compression is not guaranteed to reduce it:
+it can measure smaller in accounting terms while resident memory stays flat
+or even increases. When `ToMarkdown()` detects exactly that (optimized RSS
+measured higher than default), it says so explicitly with an
+"accounting-only" caveat rather than silently reporting the delta.
+
+`vq benchmark <model> [--method NAME] [--max-tokens N]` is a thin CLI
+wrapper around this function, printing its `ToMarkdown()` output. This is a
+CLI-output-shape change from earlier versions, which printed a single-shot
+wall-clock timing with no TTFT/RSS/comparison — the new output is strictly
+more informative but not byte-identical to the old format.
+
+Requires real Apple Silicon hardware and a downloaded model; not
+unit-testable in CI (see `benchmark_manual_test.go`, build-tagged
+`manual`).
 
 ## Architecture
 
@@ -318,6 +489,8 @@ veloxquant-go/
 ├── runtime/      HTTP client for the local VeloxQuant runtime
 ├── openai/       OpenAI-compatible chat completions, streaming, embeddings
 ├── monitor/      Thread-safe memory/inference metrics monitoring
+├── agent/        Tool-calling loop over a Client (no third-party dependency)
+├── mcp/          MCP tool sources for agent.Agent (separate Go module)
 ├── langchain/    langchaingo llms.Model adapter (separate Go module)
 ├── cmd/vq/       CLI
 └── examples/     Runnable examples
@@ -330,8 +503,8 @@ mocked in tests without touching real hardware or a live runtime.
 ## Examples
 
 See [examples/](examples/) for runnable programs: `chat`, `streaming`,
-`autopilot`, `server`, `structured`, `conversation`, `embeddings`, and
-`langchain`.
+`autopilot`, `server`, `structured`, `conversation`, `embeddings`,
+`agent`, `mcp`, and `langchain`.
 
 ## Testing
 

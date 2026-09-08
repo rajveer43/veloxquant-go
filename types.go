@@ -57,11 +57,31 @@ type MemoryEstimate struct {
 	RecommendedStrategy string
 }
 
-// Message is a single chat message.
+// Message is a single chat message. ToolCalls is populated on an assistant
+// message that called one or more tools; ToolCallID is set on a "tool"
+// role message reporting a tool's result back to the model, identifying
+// which call it answers. See the agent package for a tool-calling loop
+// built on these fields.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
+
+// ToolDefinition re-exports openai.ToolDefinition at the top level: a
+// callable tool description in OpenAI's function-calling wire format.
+type ToolDefinition = openai.ToolDefinition
+
+// ToolFunction re-exports openai.ToolFunction at the top level.
+type ToolFunction = openai.ToolFunction
+
+// ToolCall re-exports openai.ToolCall at the top level: a single tool
+// invocation the model requested.
+type ToolCall = openai.ToolCall
+
+// ToolCallFunction re-exports openai.ToolCallFunction at the top level.
+type ToolCallFunction = openai.ToolCallFunction
 
 // ChatRequest describes a chat completion request.
 type ChatRequest struct {
@@ -86,6 +106,12 @@ type ChatRequest struct {
 	// do not rely on ResponseFormat alone for structured extraction
 	// against the VeloxQuant runtime today.
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+
+	// Tools declares the functions the model may call. When the model
+	// responds by calling one or more of them, ChatResponse.ToolCalls is
+	// populated instead of (or alongside) Text, and FinishReason is
+	// "tool_calls".
+	Tools []ToolDefinition `json:"tools,omitempty"`
 }
 
 // ResponseFormat requests a specific chat completion output format.
@@ -138,6 +164,15 @@ type ChatResponse struct {
 	ID    string `json:"id"`
 	Model string `json:"model"`
 	Text  string `json:"text"`
+
+	// FinishReason is the reason generation stopped, e.g. "stop", "length",
+	// or "tool_calls" when the model called one or more tools (see
+	// ToolCalls).
+	FinishReason string `json:"finish_reason,omitempty"`
+
+	// ToolCalls holds the tool calls the model requested, when
+	// FinishReason is "tool_calls". Empty otherwise.
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 
 	Usage Usage `json:"usage"`
 

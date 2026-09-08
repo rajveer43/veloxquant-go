@@ -127,8 +127,9 @@ func (c ProcessConfig) args() []string {
 // cleanly. Use StartProcess to construct one; the zero value is not
 // usable.
 type Process struct {
-	cfg ProcessConfig
-	cmd *exec.Cmd
+	cfg    ProcessConfig
+	cmd    *exec.Cmd
+	method string
 
 	mu   sync.Mutex
 	done chan struct{}
@@ -184,6 +185,7 @@ func StartProcess(ctx context.Context, cfg ProcessConfig) (*Process, error) {
 		p.mu.Lock()
 		p.cfg.Host = info.Host
 		p.cfg.Port = info.Port
+		p.method = info.Method
 		p.mu.Unlock()
 		return p, nil
 	case err := <-scanErrCh:
@@ -242,6 +244,22 @@ func (p *Process) URL() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return fmt.Sprintf("http://%s:%d", p.cfg.host(), p.cfg.port())
+}
+
+// PID returns the runtime subprocess's OS process ID, for use with
+// external tools that inspect a process by PID (e.g. `ps` for resident
+// memory, as veloxquant.Benchmark does).
+func (p *Process) PID() int {
+	return p.cmd.Process.Pid
+}
+
+// Method returns the KV-cache compression method the runtime process
+// reported using in its ready handshake — useful when ProcessConfig.Method
+// was left empty and the runtime picked one automatically.
+func (p *Process) Method() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.method
 }
 
 // Wait blocks until the process exits, returning its exit error (if any).

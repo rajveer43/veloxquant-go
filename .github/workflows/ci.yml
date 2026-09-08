@@ -70,6 +70,31 @@ jobs:
         working-directory: langchain
         run: go test ./...
 
+  mcp:
+    strategy:
+      matrix:
+        go-version: ["1.25", "1.26"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          check-latest: true
+
+      - name: Build
+        working-directory: mcp
+        run: go build ./...
+
+      - name: Vet
+        working-directory: mcp
+        run: go vet ./...
+
+      - name: Test
+        working-directory: mcp
+        run: go test ./...
+
   staticcheck:
     runs-on: ubuntu-latest
     steps:

@@ -12,6 +12,15 @@ import (
 )
 
 func runModels(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "pull":
+			return runModelsPull(args[1:])
+		case "delete":
+			return runModelsDelete(args[1:])
+		}
+	}
+
 	fs := flag.NewFlagSet("models", flag.ContinueOnError)
 	local := fs.Bool("local", false, "List downloaded/cached models and disk usage")
 	if err := fs.Parse(args); err != nil {
@@ -83,5 +92,69 @@ func runModels(args []string) error {
 	}
 	w.Flush()
 
+	return nil
+}
+
+// runModelsPull implements `vq models pull <id>`, downloading a model's
+// weights into the local Hugging Face cache via veloxquant.Client.Models.Pull.
+// No timeout is applied beyond the process's own lifetime: downloads can
+// take many minutes for large models.
+func runModelsPull(args []string) error {
+	fs := flag.NewFlagSet("models pull", flag.ContinueOnError)
+	python := fs.String("python", "", "Python interpreter to use (default: $VELOXQUANT_PYTHON, then python3)")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: vq models pull <model-id> [--python PATH]")
+	}
+	modelID := fs.Arg(0)
+
+	client, err := veloxquant.NewClient()
+	if err != nil {
+		return fmt.Errorf("create client: %w", err)
+	}
+
+	fmt.Printf("Pulling %s ...\n", modelID)
+	result, err := client.Models.Pull(context.Background(), *python, modelID)
+	if err != nil {
+		return fmt.Errorf("pull model: %w", err)
+	}
+
+	fmt.Printf("Pulled %s (%s)\n", result.ID, veloxquant.FormatBytes(result.SizeBytes))
+	return nil
+}
+
+// runModelsDelete implements `vq models delete <id>`, removing a model's
+// weights from the local Hugging Face cache via
+// veloxquant.Client.Models.Delete.
+func runModelsDelete(args []string) error {
+	fs := flag.NewFlagSet("models delete", flag.ContinueOnError)
+	python := fs.String("python", "", "Python interpreter to use (default: $VELOXQUANT_PYTHON, then python3)")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: vq models delete <model-id> [--python PATH]")
+	}
+	modelID := fs.Arg(0)
+
+	client, err := veloxquant.NewClient()
+	if err != nil {
+		return fmt.Errorf("create client: %w", err)
+	}
+
+	result, err := client.Models.Delete(context.Background(), *python, modelID)
+	if err != nil {
+		return fmt.Errorf("delete model: %w", err)
+	}
+
+	fmt.Printf("Deleted %s (freed %s)\n", result.ID, veloxquant.FormatBytes(result.FreedBytes))
 	return nil
 }
