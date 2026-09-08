@@ -137,6 +137,43 @@ fmt.Println(rec.CompressionBits)     // e.g. 4
 fmt.Println(rec.Reason)
 ```
 
+## Local Model Cache
+
+`client.Models` exposes three operations against the local Hugging Face
+model cache (`$HF_HOME/hub`, or `~/.cache/huggingface/hub` by default) —
+`Local` (list), `Pull` (download), and `Delete` (remove). They have
+different dependency requirements:
+
+```go
+localModels, err := client.Models.Local(ctx) // dependency-free: pure filesystem scan
+
+result, err := client.Models.Pull(ctx, "", "mlx-community/Qwen3-8B-4bit") // shells out to Python
+freed, err := client.Models.Delete(ctx, "", "mlx-community/Qwen3-8B-4bit") // shells out to Python
+```
+
+`Local` (backed by `models.ScanLocal`) walks the cache directory directly
+with `os.ReadDir`/`filepath.WalkDir` — no Python dependency at all.
+
+`Pull` and `Delete` (backed by `models.Pull`/`models.Delete`) instead shell
+out to a Python interpreter with `huggingface_hub` importable, running a
+short snippet that calls `snapshot_download()` / the
+`scan_cache_dir().delete_revisions()` eviction API. This is a deliberate,
+asymmetric design, not an oversight: downloading requires resolving a model
+id to its file manifest and content-addressing new blobs against the
+existing cache, and deleting requires safely removing only the blobs a
+revision uniquely owns without corrupting a *different* cached model's
+shared blobs (the cache's on-disk layout is content-addressed via
+symlinks). Reimplementing that logic natively in Go would mean chasing a
+cache format Go doesn't own; shelling out to `huggingface_hub`'s own
+battle-tested implementation is the same choice the TS SDK makes. Pass an
+interpreter path as `Pull`/`Delete`'s second argument, or `""` to use the
+default resolution (`$VELOXQUANT_PYTHON`, then `python3`). A model id is
+always passed as its own subprocess argument, never interpolated into the
+Python source, so it can't be used to inject shell or Python syntax.
+
+`errors.Is(err, veloxquant.ErrHuggingFaceHubUnavailable)` distinguishes "no
+working Python/huggingface_hub" from other pull/delete failures.
+
 ## AutoPilot
 
 AutoPilot inspects your hardware, picks a compatible model, chooses a safe
@@ -293,11 +330,20 @@ go install github.com/rajveer43/veloxquant-go/cmd/vq@latest
 ```bash
 vq doctor              # check system readiness
 vq analyze Qwen3-8B    # memory breakdown for a model
+vq models --local      # list downloaded models and disk usage
+vq models pull <id>    # download a model's weights into the local cache
+vq models delete <id>  # remove a model's weights from the local cache
 vq recommend           # recommended models + profile for this hardware
 vq benchmark Qwen3-8B  # tokens/sec, TTFT, memory (requires a running runtime)
 vq serve               # connect to a local VeloxQuant runtime
 vq serve --model mlx-community/Qwen3-8B-4bit   # launch a runtime for this model
 ```
+
+`vq models pull`/`vq models delete` shell out to a Python interpreter with
+`huggingface_hub` importable (`--python` overrides the interpreter used,
+default `$VELOXQUANT_PYTHON`, then `python3`) — unlike `vq models --local`,
+which is a dependency-free filesystem scan. See
+[Local Model Cache](#local-model-cache) below.
 
 `vq serve --model` launches the `veloxquant` CLI (from the
 [VeloxQuant-MLX](https://github.com/rajveer43/VeloxQuant-MLX) Python

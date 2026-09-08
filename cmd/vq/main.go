@@ -53,6 +53,8 @@ Usage:
   vq doctor              Check system readiness for local AI
   vq analyze <model>     Analyze memory requirements for a model
   vq models [--local]    List registry models or locally cached models
+  vq models pull <id>    Download a model's weights into the local cache
+  vq models delete <id>  Remove a model's weights from the local cache
   vq recommend           Recommend models and a profile for this hardware
   vq benchmark <model>   Benchmark inference performance for a model
   vq serve               Connect to (or report on) the VeloxQuant runtime

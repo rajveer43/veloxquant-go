@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- OpenAI-compatible tool-calling wire types: `openai.ToolDefinition`/
+  `ToolFunction`/`ToolCall`/`ToolCallFunction`, `Message.ToolCalls`/
+  `ToolCallID`, `ChatRequest.Tools`, and `ChatChoice.FinishReason` (also
+  re-exported at the root package level). Purely additive; prerequisite
+  for the `agent` package.
+- `models.Pull` / `models.Delete` (and `Client.Models.Pull` / `.Delete`),
+  exposed via `vq models pull <id>` / `vq models delete <id>`. Unlike
+  `Models.Local` (a dependency-free filesystem scan), these shell out to a
+  Python interpreter with `huggingface_hub` importable — see the new
+  "Local Model Cache" README section for why. New sentinel errors
+  `models.ErrHuggingFaceHubUnavailable` (re-exported as
+  `veloxquant.ErrHuggingFaceHubUnavailable`) and `models.ErrLocalModelNotFound`.
 - `ChatRequest.ResponseFormat`, with `veloxquant.JSONMode()` and
   `veloxquant.JSONSchema(name, schema, strict)` helpers, passed through to
   the runtime's OpenAI-compatible endpoint. The VeloxQuant runtime serves
