@@ -3,20 +3,54 @@
 // OpenAI-compatible local server).
 package openai
 
-// Message is a single chat message in OpenAI's wire format.
+// Message is a single chat message in OpenAI's wire format. ToolCalls is
+// populated on an assistant message that called one or more tools;
+// ToolCallID is set on a "tool" role message reporting a tool's result back
+// to the model, identifying which call it answers.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+// ToolDefinition describes a callable tool in OpenAI's function-calling
+// wire format, sent in a ChatRequest's Tools field.
+type ToolDefinition struct {
+	Type     string       `json:"type"` // always "function"
+	Function ToolFunction `json:"function"`
+}
+
+// ToolFunction is the function description within a ToolDefinition.
+type ToolFunction struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Parameters  any    `json:"parameters"` // JSON Schema
+}
+
+// ToolCall is a single tool invocation the model requested, in OpenAI's
+// wire format.
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"` // always "function"
+	Function ToolCallFunction `json:"function"`
+}
+
+// ToolCallFunction is the function invocation within a ToolCall.
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"` // JSON-encoded arguments, per OpenAI's wire format
 }
 
 // ChatRequest is an OpenAI-compatible chat completion request.
 type ChatRequest struct {
-	Model          string          `json:"model"`
-	Messages       []Message       `json:"messages"`
-	Temperature    float64         `json:"temperature,omitempty"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
-	Stream         bool            `json:"stream,omitempty"`
-	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	Model          string           `json:"model"`
+	Messages       []Message        `json:"messages"`
+	Temperature    float64          `json:"temperature,omitempty"`
+	MaxTokens      int              `json:"max_tokens,omitempty"`
+	Stream         bool             `json:"stream,omitempty"`
+	ResponseFormat *ResponseFormat  `json:"response_format,omitempty"`
+	Tools          []ToolDefinition `json:"tools,omitempty"`
 }
 
 // ResponseFormat requests a specific output format from the model, in
@@ -42,9 +76,14 @@ type Usage struct {
 }
 
 // ChatChoice is a single completion choice in a non-streaming response.
+// FinishReason is not restricted to a fixed set of values by this client:
+// "tool_calls" (the model requested one or more tool calls, carried in
+// Message.ToolCalls) is a normal, non-error value alongside "stop" and
+// "length", and is passed through unmodified rather than rejected.
 type ChatChoice struct {
-	Index   int     `json:"index"`
-	Message Message `json:"message"`
+	Index        int     `json:"index"`
+	Message      Message `json:"message"`
+	FinishReason string  `json:"finish_reason,omitempty"`
 }
 
 // ChatResponse is an OpenAI-compatible chat completion response.

@@ -273,8 +273,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 	}
 
 	var text string
+	var finishReason string
+	var toolCalls []ToolCall
 	if len(resp.Choices) > 0 {
 		text = resp.Choices[0].Message.Content
+		finishReason = resp.Choices[0].FinishReason
+		toolCalls = resp.Choices[0].Message.ToolCalls
 	}
 
 	elapsed := time.Since(start)
@@ -285,9 +289,11 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 	}
 
 	chatResp := ChatResponse{
-		ID:    resp.ID,
-		Model: resp.Model,
-		Text:  text,
+		ID:           resp.ID,
+		Model:        resp.Model,
+		Text:         text,
+		FinishReason: finishReason,
+		ToolCalls:    toolCalls,
 		Usage: Usage{
 			PromptTokens:     resp.Usage.PromptTokens,
 			CompletionTokens: resp.Usage.CompletionTokens,
@@ -434,7 +440,12 @@ func (c *Client) Embed(ctx context.Context, req EmbedRequest) (EmbedResponse, er
 func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 	messages := make([]openai.Message, len(req.Messages))
 	for i, m := range req.Messages {
-		messages[i] = openai.Message{Role: m.Role, Content: m.Content}
+		messages[i] = openai.Message{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCalls:  m.ToolCalls,
+			ToolCallID: m.ToolCallID,
+		}
 	}
 	return openai.ChatRequest{
 		Model:          req.Model,
@@ -442,6 +453,7 @@ func toOpenAIRequest(req ChatRequest) openai.ChatRequest {
 		Temperature:    req.Temperature,
 		MaxTokens:      req.MaxTokens,
 		ResponseFormat: req.ResponseFormat,
+		Tools:          req.Tools,
 	}
 }
 
