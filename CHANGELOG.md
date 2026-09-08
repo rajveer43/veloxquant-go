@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `agent/`: a single-turn tool-calling loop (`agent.New`, `Agent.RegisterTool`,
+  `Agent.Run`) over `*veloxquant.Client`, reusing the Phase-0 tool-calling
+  wire types end to end. `Tool` is a plain interface so any type (including
+  MCP-sourced tools) can implement it. `RunOptions.MaxSteps` defaults to 8;
+  exceeding it returns an error wrapping the new `agent.ErrAgentMaxStepsExceeded`.
+  A malformed tool-call-arguments payload, an unknown tool name, or a
+  tool's `Execute` returning an error are all fed back to the model as a
+  structured error result rather than aborting the run. No third-party
+  dependency; lives in the root module. See `examples/agent`.
 - OpenAI-compatible tool-calling wire types: `openai.ToolDefinition`/
   `ToolFunction`/`ToolCall`/`ToolCallFunction`, `Message.ToolCalls`/
   `ToolCallID`, `ChatRequest.Tools`, and `ChatChoice.FinishReason` (also

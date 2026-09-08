@@ -272,6 +272,93 @@ response, err := client.Embed(ctx, veloxquant.EmbedRequest{
 one call, mirroring OpenAI's `/v1/embeddings` request shape. See
 [examples/embeddings](examples/embeddings).
 
+## Agent: Tool-Calling Loop
+
+The `agent` package implements a single-turn tool-calling loop over a
+`*veloxquant.Client`: send a prompt, execute any tools the model calls,
+feed the results back, and repeat until the model stops calling tools or a
+maximum number of round trips is used up. It reuses the OpenAI
+`tools`/`tool_calls` wire shape end to end, since the underlying `mlx_lm`
+server (wrapped by `vq serve`) parses tool calls natively against this
+exact shape.
+
+```go
+import "github.com/rajveer43/veloxquant-go/agent"
+
+a := agent.New(client, "mlx-community/Qwen3-4B-4bit")
+
+a.RegisterTool(myWeatherTool) // implements agent.Tool
+
+result, err := a.Run(ctx, "What's the weather in Tokyo?", agent.RunOptions{})
+fmt.Println(result.Text)
+fmt.Println(result.Steps) // every tool call executed, in order
+```
+
+`Tool` is a plain interface (`Name() string`, `Description() string`,
+`Parameters() any`, `Execute(ctx, args json.RawMessage) (any, error)`) so
+any type can implement it — including tools sourced from an MCP server via
+`UseMcpServer` (see the separate `mcp` module below). `RunOptions.MaxSteps`
+defaults to 8 when left unset; exceeding it returns an error wrapping
+`agent.ErrAgentMaxStepsExceeded`. A malformed tool-call-arguments payload,
+an unknown tool name, or a tool's `Execute` returning an error do not abort
+the run — each is fed back to the model as a structured `{"error": "..."}`
+tool result, and the loop continues. `agent` has no third-party dependency
+and lives in the root module. See [examples/agent](examples/agent).
+
+## MCP Tool Sources
+
+The `mcp/` directory is a separate Go module
+(`github.com/rajveer43/veloxquant-go/mcp`) that lets an `agent.Agent` pull
+tools from a Model Context Protocol server, backed by the official
+[`github.com/modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk).
+It's a separate module for the same reason `langchain/` is: so the MCP SDK
+is not a dependency of the core SDK, or even of the dependency-free `agent`
+package, unless you opt in:
+
+```bash
+go get github.com/rajveer43/veloxquant-go/mcp
+```
+
+```go
+import (
+	"github.com/rajveer43/veloxquant-go/agent"
+	vqmcp "github.com/rajveer43/veloxquant-go/mcp"
+)
+
+source, err := vqmcp.Connect(ctx, vqmcp.ServerConfig{
+	Name:      "my-server",
+	Transport: vqmcp.TransportStdio,
+	Command:   "my-mcp-server",
+})
+if err != nil {
+	panic(err)
+}
+
+a := agent.New(client, "mlx-community/Qwen3-4B-4bit")
+if err := a.UseMcpServer(ctx, source); err != nil {
+	panic(err)
+}
+```
+
+**API-shape divergence from the TS SDK:** TS's `Agent.useMcpServer(config)`
+connects to the MCP server itself, via a dynamic `import('./mcp.js')` so
+that importing `agent.ts` doesn't force every caller to depend on the MCP
+SDK. Go has no equivalent runtime-lazy import, so `agent.Agent.UseMcpServer`
+instead takes an already-constructed `mcp.ToolSource` (built via
+`vqmcp.Connect`, from the separate module above) rather than a config
+struct the `agent` package would need to know how to connect itself. This
+is the Go-idiomatic way to preserve the same dependency-isolation property
+TS's dynamic import achieves — a deliberate difference in API shape, not
+an incomplete port.
+
+`unwrapMcpToolResult`'s content-handling rules match `mcp.ts` exactly:
+`structuredContent` is preferred when present; a single text content block
+is tried as JSON, falling back to the raw string; any other content type
+(image/audio/resource/resource_link) returns an explicit, actionable error
+rather than silently dropping it. A tool-name collision between an MCP
+server's tools and an already-registered tool closes the newly-opened MCP
+connection before `UseMcpServer` returns its error.
+
 ## LangChain Go Adapter
 
 The `langchain/` directory is a separate Go module
@@ -364,6 +451,8 @@ veloxquant-go/
 ├── runtime/      HTTP client for the local VeloxQuant runtime
 ├── openai/       OpenAI-compatible chat completions, streaming, embeddings
 ├── monitor/      Thread-safe memory/inference metrics monitoring
+├── agent/        Tool-calling loop over a Client (no third-party dependency)
+├── mcp/          MCP tool sources for agent.Agent (separate Go module)
 ├── langchain/    langchaingo llms.Model adapter (separate Go module)
 ├── cmd/vq/       CLI
 └── examples/     Runnable examples
@@ -376,8 +465,8 @@ mocked in tests without touching real hardware or a live runtime.
 ## Examples
 
 See [examples/](examples/) for runnable programs: `chat`, `streaming`,
-`autopilot`, `server`, `structured`, `conversation`, `embeddings`, and
-`langchain`.
+`autopilot`, `server`, `structured`, `conversation`, `embeddings`,
+`agent`, and `langchain`.
 
 ## Testing
 
