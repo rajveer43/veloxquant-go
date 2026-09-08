@@ -128,3 +128,19 @@ func TestStartProcessRequiresModel(t *testing.T) {
 		t.Fatal("expected error for missing model")
 	}
 }
+
+func TestProcessPIDAndMethod(t *testing.T) {
+	p, err := startFake(t, "ready", ProcessConfig{ReadyTimeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("StartProcess() error = %v", err)
+	}
+	defer p.Stop(context.Background())
+
+	if p.PID() <= 0 {
+		t.Errorf("PID() = %d, want > 0", p.PID())
+	}
+	// The fake helper's ready handshake reports method "kivi".
+	if got := p.Method(); got != "kivi" {
+		t.Errorf("Method() = %q, want %q", got, "kivi")
+	}
+}

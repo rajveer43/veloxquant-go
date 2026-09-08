@@ -421,7 +421,7 @@ vq models --local      # list downloaded models and disk usage
 vq models pull <id>    # download a model's weights into the local cache
 vq models delete <id>  # remove a model's weights from the local cache
 vq recommend           # recommended models + profile for this hardware
-vq benchmark Qwen3-8B  # tokens/sec, TTFT, memory (requires a running runtime)
+vq benchmark Qwen3-8B  # tokens/sec, TTFT, resident memory, default vs. optimized
 vq serve               # connect to a local VeloxQuant runtime
 vq serve --model mlx-community/Qwen3-8B-4bit   # launch a runtime for this model
 ```
@@ -437,6 +437,44 @@ which is a dependency-free filesystem scan. See
 package) as a subprocess, waits for it to report readiness, and prints its
 URL. Press Ctrl+C to stop it. Optional flags: `--method` (KV-cache
 compression method), `--host`, `--port`.
+
+## Benchmark
+
+`veloxquant.Benchmark(ctx, client, input)` is a library function measuring
+tokens/sec, time-to-first-token, and measured resident memory (RSS) for a
+model on this machine, comparing the default (unoptimized) serve method
+against an optimize()-picked (or explicitly named) compression method:
+
+```go
+result, err := veloxquant.Benchmark(ctx, client, veloxquant.BenchmarkInput{
+	Model:           "mlx-community/Qwen3-8B-4bit",
+	OptimizedMethod: "kivi", // empty lets the runtime pick automatically
+})
+fmt.Println(result.ToMarkdown())
+```
+
+It launches two full runtime processes sequentially — the default method,
+then the optimized one — each fully stopped before the next starts, so
+resource contention between them never skews either measurement.
+`DefaultMethodResidentBytes`/`OptimizedResidentBytes` are `*uint64` (`nil`
+when unmeasurable, e.g. the process already exited or `ps` failed), sampled
+via `ps -o rss= -p <pid>` right after each model finishes loading — this is
+real, measured memory, not the accounting-only byte counts
+`Memory.Estimate` reports, and compression is not guaranteed to reduce it:
+it can measure smaller in accounting terms while resident memory stays flat
+or even increases. When `ToMarkdown()` detects exactly that (optimized RSS
+measured higher than default), it says so explicitly with an
+"accounting-only" caveat rather than silently reporting the delta.
+
+`vq benchmark <model> [--method NAME] [--max-tokens N]` is a thin CLI
+wrapper around this function, printing its `ToMarkdown()` output. This is a
+CLI-output-shape change from earlier versions, which printed a single-shot
+wall-clock timing with no TTFT/RSS/comparison — the new output is strictly
+more informative but not byte-identical to the old format.
+
+Requires real Apple Silicon hardware and a downloaded model; not
+unit-testable in CI (see `benchmark_manual_test.go`, build-tagged
+`manual`).
 
 ## Architecture
 

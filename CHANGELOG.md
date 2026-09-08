@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `veloxquant.Benchmark(ctx, client, input)`: a reusable library function
+  measuring tokens/sec, time-to-first-token, and measured resident memory
+  (RSS, via `ps -o rss= -p <pid>`) for a model, comparing the default serve
+  method against an optimized one across two full sequential runtime loads
+  (never concurrent). `BenchmarkResult.ToMarkdown()` renders a report,
+  including an explicit "compression is accounting-only" caveat when
+  optimized RSS measures *higher* than the default method's. `runtime.Process`
+  gains `PID()`/`Method()` accessors to support this. `cmd/vq/benchmark.go`
+  is rewritten to call this function instead of its previous ad hoc
+  single-shot wall-clock timing — a CLI output-shape change (see README).
+  Not unit-testable in CI (real Apple Silicon + a downloaded model
+  required); see the new build-tagged (`manual`) `benchmark_manual_test.go`.
 - `mcp/`: a separate Go module (own `go.mod`, isolated like `langchain/`)
   letting an `agent.Agent` pull tools from a Model Context Protocol server,
   backed by the official `github.com/modelcontextprotocol/go-sdk` v1.7.0.
@@ -64,6 +76,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `veloxquant.Client`, so a local VeloxQuant runtime can serve as the model
   in a langchaingo chain. Kept out of the root module's dependency graph;
   see `examples/langchain`.
+
+### Changed
+- `vq benchmark`'s output format and flags (`--method`/`--max-tokens`
+  replace `--context`/`--prompt`), now backed by `veloxquant.Benchmark`
+  instead of the previous ad hoc single-shot wall-clock timing — see the
+  README's Benchmark section for the full rationale. This is a behavior
+  change for existing `vq benchmark` users, even though the underlying
+  measurement is strictly more capable.
 
 ## [0.3.0] - 2026-09-03
 
