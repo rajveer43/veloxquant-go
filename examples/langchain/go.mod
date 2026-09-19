@@ -1,6 +1,6 @@
 module github.com/rajveer43/veloxquant-go/examples/langchain
 
-go 1.26.2
+go 1.26
 
 require (
 	github.com/rajveer43/veloxquant-go v0.0.0

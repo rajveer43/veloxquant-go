@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `go.mod` (root, `mcp/`, `langchain/`, `examples/mcp/`, `examples/langchain/`)
+  pinned `go 1.26.2`, an exact patch version. Since the CI matrix also runs
+  a `"1.25"` leg, that directive silently forced Go's toolchain
+  auto-download on every job (`GOTOOLCHAIN=auto` by default), so the "1.25"
+  leg never actually built against Go 1.25 — it always upgraded first. CI
+  was green without ever testing 1.25. Changed the directive to `go 1.26`
+  in all five modules and dropped the untested `"1.25"` leg from the CI
+  matrix so the stated minimum Go version is accurate.
+
+### Chore
+- Removed a stale, already-merged git worktree that had been left under
+  `.claude/worktrees/` and untracked in the repo; `.claude/` is now
+  gitignored so this can't recur.
+
+## [0.5.0] - 2026-09-08
+
 ### Added
 - `veloxquant.Benchmark(ctx, client, input)`: a reusable library function
   measuring tokens/sec, time-to-first-token, and measured resident memory
@@ -53,6 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Local Model Cache" README section for why. New sentinel errors
   `models.ErrHuggingFaceHubUnavailable` (re-exported as
   `veloxquant.ErrHuggingFaceHubUnavailable`) and `models.ErrLocalModelNotFound`.
+
+### Changed
+- `vq benchmark`'s output format and flags (`--method`/`--max-tokens`
+  replace `--context`/`--prompt`), now backed by `veloxquant.Benchmark`
+  instead of the previous ad hoc single-shot wall-clock timing — see the
+  README's Benchmark section for the full rationale. This is a behavior
+  change for existing `vq benchmark` users, even though the underlying
+  measurement is strictly more capable.
+
+## [0.4.0] - 2026-09-04
+
+### Added
 - `ChatRequest.ResponseFormat`, with `veloxquant.JSONMode()` and
   `veloxquant.JSONSchema(name, schema, strict)` helpers, passed through to
   the runtime's OpenAI-compatible endpoint. The VeloxQuant runtime serves
@@ -76,14 +105,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `veloxquant.Client`, so a local VeloxQuant runtime can serve as the model
   in a langchaingo chain. Kept out of the root module's dependency graph;
   see `examples/langchain`.
-
-### Changed
-- `vq benchmark`'s output format and flags (`--method`/`--max-tokens`
-  replace `--context`/`--prompt`), now backed by `veloxquant.Benchmark`
-  instead of the previous ad hoc single-shot wall-clock timing — see the
-  README's Benchmark section for the full rationale. This is a behavior
-  change for existing `vq benchmark` users, even though the underlying
-  measurement is strictly more capable.
 
 ## [0.3.0] - 2026-09-03
 
@@ -130,7 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vq` CLI: `doctor`, `analyze`, `recommend`, `benchmark`, `serve`.
 - Runnable examples: `chat`, `streaming`, `autopilot`, `server`.
 
-[Unreleased]: https://github.com/rajveer43/veloxquant-go/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/rajveer43/veloxquant-go/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/rajveer43/veloxquant-go/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/rajveer43/veloxquant-go/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/rajveer43/veloxquant-go/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rajveer43/veloxquant-go/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rajveer43/veloxquant-go/releases/tag/v0.1.0

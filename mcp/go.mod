@@ -1,6 +1,6 @@
 module github.com/rajveer43/veloxquant-go/mcp
 
-go 1.26.2
+go 1.26
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.7.0
