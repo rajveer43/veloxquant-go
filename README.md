@@ -12,7 +12,7 @@ memory estimation, VeloxQuant compression recommendations, and a client for
 talking to a local VeloxQuant runtime — all without needing to understand
 MLX or manually calculate memory requirements.
 
-📺 [Watch the demo](https://youtu.be/6ytBynlPZOI?si=rM6NVK4doOtwo2Re)
+[![Demo video: VeloxQuant Go](https://img.youtube.com/vi/6ytBynlPZOI/maxresdefault.jpg)](https://youtu.be/6ytBynlPZOI)
 
 ```text
 Go Application
